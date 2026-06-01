@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="{{CSP}}" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NIM Coder Chat</title>
+  <link nonce="{{NONCE}}" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/styles/github-dark.min.css" />
+  <style>
+    :root {
+      --bg: var(--vscode-editor-background);
+      --fg: var(--vscode-editor-foreground);
+      --border: var(--vscode-editorWidget-border);
+      --input-bg: var(--vscode-input-background);
+      --input-fg: var(--vscode-input-foreground);
+      --button-bg: var(--vscode-button-background);
+      --button-fg: var(--vscode-button-foreground);
+      --muted: var(--vscode-descriptionForeground);
+      --accent: #34d399;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--vscode-font-family);
+      background: radial-gradient(circle at 20% 0%, rgba(52, 211, 153, 0.15), transparent 35%), var(--bg);
+      color: var(--fg);
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      height: 100vh;
+    }
+    .toolbar {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 8px;
+      padding: 10px;
+      border-bottom: 1px solid var(--border);
+      align-items: center;
+    }
+    .toolbar select, .toolbar button {
+      background: var(--input-bg);
+      color: var(--input-fg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 8px;
+    }
+    .chat {
+      overflow-y: auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .bubble {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      white-space: pre-wrap;
+      line-height: 1.4;
+    }
+    .bubble.user {
+      background: color-mix(in oklab, var(--vscode-button-background), black 70%);
+      align-self: flex-end;
+      max-width: 85%;
+    }
+    .bubble.assistant {
+      background: color-mix(in oklab, var(--vscode-editor-background), var(--accent) 8%);
+      align-self: flex-start;
+      max-width: 92%;
+    }
+    .inputWrap {
+      border-top: 1px solid var(--border);
+      padding: 10px;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+    textarea {
+      width: 100%;
+      min-height: 90px;
+      resize: vertical;
+      background: var(--input-bg);
+      color: var(--input-fg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font-family: var(--vscode-editor-font-family, monospace);
+      font-size: 13px;
+    }
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .leftActions, .rightActions { display: flex; gap: 8px; }
+    button.primary {
+      background: var(--button-bg);
+      color: var(--button-fg);
+      border: none;
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: transparent;
+      color: var(--input-fg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    .tokens {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .typing::after {
+      content: '▍';
+      display: inline-block;
+      margin-left: 2px;
+      animation: pulse 1s infinite;
+      color: var(--accent);
+    }
+    @keyframes pulse {
+      0% { opacity: 0.2; }
+      50% { opacity: 1; }
+      100% { opacity: 0.2; }
+    }
+    pre {
+      position: relative;
+      padding: 10px;
+      border-radius: 8px;
+      overflow: auto;
+      background: rgba(0, 0, 0, 0.35);
+    }
+    .copyBtn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      font-size: 11px;
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      background: var(--input-bg);
+      color: var(--input-fg);
+      cursor: pointer;
+    }
+    .fileHints {
+      display: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--input-bg);
+      max-height: 120px;
+      overflow-y: auto;
+      font-size: 12px;
+    }
+    .fileHints.visible { display: block; }
+    .hintItem {
+      padding: 6px 8px;
+      cursor: pointer;
+    }
+    .hintItem:hover {
+      background: color-mix(in oklab, var(--input-bg), white 8%);
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <strong>NIM Coder</strong>
+    <select id="modelSelect">
+      <option value="qwen/qwen3-coder-480b-a35b-instruct">qwen3-coder-480b</option>
+      <option value="deepseek-ai/deepseek-v4-flash">deepseek-v4-flash</option>
+      <option value="qwen/qwen3-235b-a22b-instruct">qwen3-235b</option>
+      <option value="mistralai/devstral-small">devstral-small</option>
+    </select>
+    <button id="clearBtn" class="secondary">Clear chat</button>
+  </div>
+  <div id="chat" class="chat"></div>
+  <div class="inputWrap">
+    <textarea id="input" placeholder="Ask NIM Coder... Use @workspace or @file path/to/file.ts"></textarea>
+    <div id="fileHints" class="fileHints"></div>
+    <div class="actions">
+      <div class="leftActions">
+        <button id="enhanceBtn" class="secondary">Enhance Prompt</button>
+        <button id="stopBtn" class="secondary">Stop</button>
+      </div>
+      <div class="rightActions">
+        <span id="tokens" class="tokens">~0 tokens used this session</span>
+        <button id="sendBtn" class="primary">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <script nonce="{{NONCE}}" src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/highlight.min.js"></script>
+  <script nonce="{{NONCE}}">
+    const vscode = acquireVsCodeApi();
+    const chatEl = document.getElementById('chat');
+    const inputEl = document.getElementById('input');
+    const sendBtn = document.getElementById('sendBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const enhanceBtn = document.getElementById('enhanceBtn');
+    const modelSelect = document.getElementById('modelSelect');
+    const tokenEl = document.getElementById('tokens');
+    const fileHints = document.getElementById('fileHints');
+    let activeAssistantBubble = null;
+
+    function renderMarkdown(content) {
+      const escaped = content
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      const withCode = escaped.replace(/```([\s\S]*?)```/g, (match, code) => {
+        return `<pre><button class="copyBtn">Copy</button><code>${code}</code></pre>`;
+      });
+      return withCode.replace(/\n/g, '<br/>');
+    }
+
+    function attachCopyButtons() {
+      chatEl.querySelectorAll('.copyBtn').forEach((btn) => {
+        if (btn.dataset.bound) return;
+        btn.dataset.bound = '1';
+        btn.addEventListener('click', () => {
+          const code = btn.parentElement.querySelector('code').innerText;
+          navigator.clipboard.writeText(code);
+          btn.textContent = 'Copied';
+          setTimeout(() => { btn.textContent = 'Copy'; }, 800);
+        });
+      });
+
+      if (window.hljs) {
+        chatEl.querySelectorAll('pre code').forEach((block) => window.hljs.highlightElement(block));
+      }
+    }
+
+    function addBubble(role, content) {
+      const div = document.createElement('div');
+      div.className = `bubble ${role}`;
+      div.innerHTML = renderMarkdown(content);
+      chatEl.appendChild(div);
+      chatEl.scrollTop = chatEl.scrollHeight;
+      attachCopyButtons();
+      return div;
+    }
+
+    function sendMessage() {
+      const text = inputEl.value.trim();
+      if (!text) return;
+      vscode.postMessage({ type: 'send', text, model: modelSelect.value });
+      inputEl.value = '';
+      fileHints.classList.remove('visible');
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    stopBtn.addEventListener('click', () => vscode.postMessage({ type: 'stop' }));
+    clearBtn.addEventListener('click', () => vscode.postMessage({ type: 'clear' }));
+    enhanceBtn.addEventListener('click', () => vscode.postMessage({ type: 'enhancePrompt', text: inputEl.value }));
+
+    inputEl.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        sendMessage();
+      }
+    });
+
+    inputEl.addEventListener('input', () => {
+      const value = inputEl.value;
+      const atFileMatch = value.match(/@file\s+([^\s]*)$/);
+      if (atFileMatch) {
+        vscode.postMessage({ type: 'listFiles', query: atFileMatch[1] });
+      } else {
+        fileHints.classList.remove('visible');
+      }
+    });
+
+    window.addEventListener('message', (event) => {
+      const msg = event.data;
+      if (msg.type === 'message') {
+        addBubble(msg.role, msg.content);
+      }
+      if (msg.type === 'streamStart') {
+        activeAssistantBubble = addBubble('assistant', '');
+        activeAssistantBubble.classList.add('typing');
+      }
+      if (msg.type === 'streamToken' && activeAssistantBubble) {
+        const current = activeAssistantBubble.textContent || '';
+        activeAssistantBubble.innerHTML = renderMarkdown(current + msg.token);
+        chatEl.scrollTop = chatEl.scrollHeight;
+        attachCopyButtons();
+      }
+      if (msg.type === 'streamEnd') {
+        if (activeAssistantBubble) {
+          activeAssistantBubble.classList.remove('typing');
+        }
+        activeAssistantBubble = null;
+        if (typeof msg.tokenCount === 'number') {
+          tokenEl.textContent = `~${msg.tokenCount} tokens used this session`;
+        }
+      }
+      if (msg.type === 'streamError') {
+        if (activeAssistantBubble) {
+          activeAssistantBubble.classList.remove('typing');
+        }
+        activeAssistantBubble = null;
+        addBubble('assistant', `Error: ${msg.message}`);
+      }
+      if (msg.type === 'cleared') {
+        chatEl.innerHTML = '';
+        tokenEl.textContent = '~0 tokens used this session';
+      }
+      if (msg.type === 'enhancedPrompt') {
+        inputEl.value = msg.text || '';
+        inputEl.focus();
+      }
+      if (msg.type === 'fileSuggestions') {
+        const files = Array.isArray(msg.files) ? msg.files : [];
+        if (files.length === 0) {
+          fileHints.classList.remove('visible');
+          return;
+        }
+
+        fileHints.innerHTML = '';
+        for (const file of files) {
+          const item = document.createElement('div');
+          item.className = 'hintItem';
+          item.textContent = file;
+          item.addEventListener('click', () => {
+            inputEl.value = inputEl.value.replace(/@file\s+([^\s]*)$/, `@file ${file}`);
+            inputEl.focus();
+            fileHints.classList.remove('visible');
+          });
+          fileHints.appendChild(item);
+        }
+        fileHints.classList.add('visible');
+      }
+      if (msg.type === 'focusInput') {
+        inputEl.focus();
+      }
+    });
+  </script>
+</body>
+</html>

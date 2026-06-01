@@ -1,0 +1,209 @@
+{
+  "name": "nim-coder",
+  "displayName": "NIM Coder",
+  "description": "NVIDIA NIM powered coding assistant for VS Code",
+  "version": "0.1.0",
+  "publisher": "nimcoder",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=18"
+  },
+  "categories": [
+    "AI",
+    "Programming Languages",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:nimcoder.openChat",
+    "onView:nimcoder.chatView"
+  ],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "watch": "npm run compile -- --watch",
+    "test": "vscode-test"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "nimcoder.openChat",
+        "title": "NIM Coder: Open Chat"
+      },
+      {
+        "command": "nimcoder.focusChat",
+        "title": "NIM Coder: Focus Chat"
+      },
+      {
+        "command": "nimcoder.startAgentTask",
+        "title": "NIM Coder: Start Agent Task"
+      },
+      {
+        "command": "nimcoder.setApiKey",
+        "title": "NIM Coder: Set API Key"
+      },
+      {
+        "command": "nimcoder.explainCode",
+        "title": "NIM Coder: Explain Code"
+      },
+      {
+        "command": "nimcoder.refactorThis",
+        "title": "NIM Coder: Refactor This"
+      },
+      {
+        "command": "nimcoder.fixBug",
+        "title": "NIM Coder: Fix Bug"
+      },
+      {
+        "command": "nimcoder.addDocumentation",
+        "title": "NIM Coder: Add Documentation"
+      },
+      {
+        "command": "nimcoder.generateUnitTests",
+        "title": "NIM Coder: Generate Unit Tests"
+      },
+      {
+        "command": "nimcoder.optimizePerformance",
+        "title": "NIM Coder: Optimize Performance"
+      },
+      {
+        "command": "nimcoder.fixDiagnostic",
+        "title": "NIM Coder: Fix Diagnostic"
+      },
+      {
+        "command": "nimcoder.acceptDiff",
+        "title": "NIM Coder: Accept Changes"
+      },
+      {
+        "command": "nimcoder.rejectDiff",
+        "title": "NIM Coder: Reject Changes"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "nimcoder.explainCode",
+          "group": "nimcoder@1"
+        },
+        {
+          "command": "nimcoder.refactorThis",
+          "group": "nimcoder@2"
+        },
+        {
+          "command": "nimcoder.fixBug",
+          "group": "nimcoder@3"
+        },
+        {
+          "command": "nimcoder.addDocumentation",
+          "group": "nimcoder@4"
+        },
+        {
+          "command": "nimcoder.generateUnitTests",
+          "group": "nimcoder@5"
+        },
+        {
+          "command": "nimcoder.optimizePerformance",
+          "group": "nimcoder@6"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "nimcoder.acceptDiff",
+          "group": "navigation",
+          "when": "nimcoder.hasPendingDiff"
+        },
+        {
+          "command": "nimcoder.rejectDiff",
+          "group": "navigation",
+          "when": "nimcoder.hasPendingDiff"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "nimcoder.openChat",
+          "when": "view == nimcoder.chatView",
+          "group": "navigation"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "nimcoder",
+          "title": "NIM Coder",
+          "icon": "media/lightning.svg"
+        }
+      ]
+    },
+    "views": {
+      "nimcoder": [
+        {
+          "type": "webview",
+          "id": "nimcoder.chatView",
+          "name": "Chat"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "nimcoder.startAgentTask",
+        "key": "ctrl+shift+n"
+      },
+      {
+        "command": "nimcoder.focusChat",
+        "key": "ctrl+k"
+      }
+    ],
+    "configuration": {
+      "title": "NIM Coder",
+      "properties": {
+        "nimcoder.completions.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable inline ghost-text completions."
+        },
+        "nimcoder.completions.triggerDelay": {
+          "type": "number",
+          "default": 400,
+          "description": "Inline completion debounce delay in milliseconds."
+        },
+        "nimcoder.preferredChatModel": {
+          "type": "string",
+          "default": "qwen/qwen3-coder-480b-a35b-instruct",
+          "description": "Preferred chat model for NIM Coder."
+        },
+        "nimcoder.preferredAgentModel": {
+          "type": "string",
+          "default": "deepseek-ai/deepseek-v4-flash",
+          "description": "Preferred agent model for NIM Coder."
+        },
+        "nimcoder.maxContextTokens": {
+          "type": "number",
+          "default": 60000,
+          "description": "Maximum context token budget for chat and agent tasks."
+        },
+        "nimcoder.showTokenCounter": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show token usage in the chat panel."
+        },
+        "nimcoder.agent.requireConfirmation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require confirmation before potentially destructive agent edits."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "openai": "^4.67.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.5.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.2"
+  }
+}
