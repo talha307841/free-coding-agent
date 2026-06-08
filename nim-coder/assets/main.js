@@ -137,15 +137,20 @@ function initCodeRain() {
     return;
   }
 
-  const tokens = ['async', 'await', 'const', 'diff', 'patch', 'grep', 'struct', 'fn', 'impl', 'null', 'true', '===', '-46', '+12', '@@'];
+  const tokens = [
+    'async', 'await', 'const', 'let', 'return', 'diff', 'patch', 'grep', 'struct', 'enum',
+    'fn', 'impl', 'class', 'null', 'true', 'false', '===', '=>', '{}', '[]', '()', '@@',
+    '-46', '+12', '+128', 'git', 'merge', 'plan', 'ship', 'ctx', 'npm', 'ts', 'py'
+  ];
   const colors = [
     { color: '#00ff6a', weight: 0.3 },
     { color: '#00cc55', weight: 0.5 },
     { color: '#00aa44', weight: 0.2 }
   ];
 
-  const fontSize = 16;
-  const rowHeight = 22;
+  const fontSize = 14;
+  const rowHeight = 18;
+  const columnGap = 34;
   let width = 0;
   let height = 0;
   let drops = [];
@@ -168,7 +173,8 @@ function initCodeRain() {
       y: initial ? Math.random() * (-height / rowHeight) : -Math.random() * 24,
       speed: 0.06 + Math.random() * 0.08,
       token: tokens[(Math.random() * tokens.length) | 0],
-      color: pickColor()
+      color: pickColor(),
+      trail: 2 + ((Math.random() * 3) | 0)
     };
   };
 
@@ -180,7 +186,7 @@ function initCodeRain() {
     canvas.height = Math.floor(height * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const columns = Math.max(8, Math.floor(width / 48));
+    const columns = Math.max(14, Math.floor(width / columnGap));
     drops = new Array(columns);
     for (let i = 0; i < columns; i += 1) {
       resetDrop(i, columns, true);
@@ -192,7 +198,7 @@ function initCodeRain() {
 
   let rafId = 0;
   const frame = () => {
-    ctx.fillStyle = 'rgba(10, 14, 12, 0.12)';
+    ctx.fillStyle = 'rgba(10, 14, 12, 0.08)';
     ctx.fillRect(0, 0, width, height);
 
     ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
@@ -202,16 +208,28 @@ function initCodeRain() {
       const d = drops[i];
       d.y += d.speed;
 
-      if (Math.random() > 0.992) {
+      if (Math.random() > 0.986) {
         d.token = tokens[(Math.random() * tokens.length) | 0];
         d.color = pickColor();
       }
 
       const yPx = d.y * rowHeight;
-      const xPx = d.x * 48 + 10;
+      const xPx = d.x * columnGap + 6;
       const alpha = Math.max(0.2, Math.min(0.9, 1 - Math.abs((yPx - height * 0.55) / (height * 0.9))));
-      ctx.fillStyle = withAlpha(d.color, alpha);
-      ctx.fillText(d.token, xPx, yPx);
+
+      for (let t = 0; t < d.trail; t += 1) {
+        const trailY = yPx - t * rowHeight * 0.9;
+        if (trailY < -24) {
+          continue;
+        }
+
+        const trailAlpha = alpha * (1 - t / (d.trail + 1));
+        const trailToken = t === 0
+          ? d.token
+          : tokens[(i + t + ((d.y * 17) | 0)) % tokens.length];
+        ctx.fillStyle = withAlpha(d.color, Math.max(0.08, trailAlpha));
+        ctx.fillText(trailToken, xPx, trailY);
+      }
 
       if (yPx > height + 24) {
         resetDrop(i, drops.length, false);
