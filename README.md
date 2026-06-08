@@ -2,6 +2,8 @@
 
 <img src="https://img.shields.io/badge/NIM_Coder-AI_Agent-00FF94?style=for-the-badge&logoColor=black" alt="NIM Coder"/>
 
+<img src="./media/nim-coder-banner.svg" alt="NIM Coder banner" width="100%"/>
+
 # NIM Coder
 
 ### An intelligent coding agent that plans, diffs, and applies changes — with full human review at every step.
