@@ -131,6 +131,20 @@
       min-height: 0;
     }
 
+    .empty-state {
+      margin: auto;
+      text-align: center;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .empty-state strong {
+      display: block;
+      color: var(--text);
+      font-size: 18px;
+      margin-bottom: 4px;
+    }
+
     .message {
       max-width: 90%;
       border-radius: var(--radius);
@@ -253,10 +267,11 @@
       gap: 8px;
       font-size: 12px;
       color: var(--text);
+      cursor: pointer;
     }
 
     .read-summary {
-      margin-top: 7px;
+      margin-top: 4px;
       font-size: 12px;
       color: var(--muted);
     }
@@ -282,6 +297,16 @@
     .read-expanded.open {
       max-height: 360px;
       opacity: 1;
+    }
+
+    .plan-steps {
+      margin: 8px 0 0;
+      padding-left: 18px;
+      font-size: 12px;
+    }
+
+    .plan-steps.collapsed {
+      display: none;
     }
 
     .read-code-wrap {
@@ -664,7 +689,12 @@
       </div>
     </header>
 
-    <main id="messages" class="chat"></main>
+    <main id="messages" class="chat">
+      <div id="empty-state" class="empty-state">
+        <strong>NIM Coder</strong>
+        <div>Ask me anything about your code.</div>
+      </div>
+    </main>
 
     <aside class="side">
       <div class="side-head">
@@ -708,6 +738,7 @@
     let contextUsedTokens = 0;
     let contextLimitTokens = 128000;
     const terminalCards = new Map();
+    const readCardGroups = new Map();
 
     function now() {
       return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -728,12 +759,33 @@
       return esc(value).replace(/\n/g, '<br>');
     }
 
+    function hasContentMessages() {
+      return document.querySelectorAll('#messages > .message, #messages > .card').length > 0;
+    }
+
+    function syncEmptyState() {
+      const empty = document.getElementById('empty-state');
+      if (!empty) return;
+      empty.style.display = hasContentMessages() ? 'none' : 'block';
+    }
+
+    function basename(filePath) {
+      const parts = String(filePath || '').split('/');
+      return parts[parts.length - 1] || filePath;
+    }
+
+    function shouldSkipReadPath(filePath) {
+      const p = String(filePath || '');
+      return /(venv|\.venv|site-packages|node_modules|\.dist-info|__pycache__)/i.test(p);
+    }
+
     function addMessage(role, content) {
       const wrap = document.createElement('div');
       wrap.className = `message ${role}`;
       wrap.innerHTML = `<span class="time">${now()}</span><div class="msg-content">${role === 'assistant' ? renderMarkdown(content) : esc(content).replace(/\n/g, '<br>')}</div>`;
       document.getElementById('messages').appendChild(wrap);
       processCodeBlocks(wrap);
+      syncEmptyState();
       scrollBottom();
       return wrap;
     }
@@ -743,6 +795,7 @@
       assistantBubble.className = 'message assistant';
       assistantBubble.innerHTML = '<span class="time">' + now() + '</span><div class="status-line" data-status hidden></div><div class="msg-content" data-content></div>';
       document.getElementById('messages').appendChild(assistantBubble);
+      syncEmptyState();
       scrollBottom();
     }
 
@@ -791,7 +844,7 @@
     function updateTokenEstimate(text) {
       const estimate = Math.ceil(String(text || '').length / 4);
       const tokenEl = document.getElementById('token-count');
-      tokenEl.textContent = `~${estimate} tokens`;
+      tokenEl.textContent = `~${estimate} tokens | ${Math.ceil(contextUsedTokens / 1000)}k/128k used`;
       tokenEl.title = `Input: ~${estimate.toLocaleString()} tokens | Context: ~${contextUsedTokens.toLocaleString()} tokens | Limit: ${contextLimitTokens.toLocaleString()}`;
     }
 
@@ -947,46 +1000,84 @@
 
     function renderReadCard(payload) {
       const annotation = payload.annotation || {};
-      const card = document.createElement('div');
-      card.className = 'card';
+      if (shouldSkipReadPath(annotation.filePath)) {
+        return;
+      }
 
-      const headerLabel = payload.label || `📄 Read: ${annotation.filePath} (lines ${annotation.startLine}-${annotation.endLine}) - ${annotation.summary || 'targeted read'}`;
-      card.innerHTML = `
-        <div class="read-head">
-          <span>${esc(headerLabel)}</span>
-          <span>${esc(annotation.languageTag || 'text')}</span>
-        </div>
-        <div class="read-summary">${esc(annotation.summary || '')}</div>
-        <div class="read-actions"><button class="btn" data-toggle-text>text</button></div>
-        <div class="read-expanded" data-expanded>
-          <div class="read-code-wrap" data-code-wrap></div>
-          <div class="read-actions" style="padding: 8px"><button class="btn" data-collapse>Collapse</button></div>
-        </div>
-      `;
-
-      const expanded = card.querySelector('[data-expanded]');
-      const codeWrap = card.querySelector('[data-code-wrap]');
-      const lines = String(payload.content || '').split(/\r?\n/);
+      const filePath = String(annotation.filePath || 'unknown');
+      const fileName = basename(filePath);
       const startLine = Number(annotation.startLine || 1);
+      const endLine = Number(annotation.endLine || startLine);
+      const rangeLabel = `${startLine}–${endLine}`;
+      const key = filePath;
 
-      function buildCodeTable() {
-        if (codeWrap.childElementCount > 0) {
-          return;
-        }
+      let group = readCardGroups.get(key);
+      if (!group) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div class="read-head" data-toggle>
+            <span data-title></span>
+            <span>↓ expand</span>
+          </div>
+          <div class="read-expanded" data-expanded>
+            <div class="read-code-wrap" data-code-wrap></div>
+            <div class="read-actions" style="padding: 8px"><button class="btn" data-collapse>Collapse</button></div>
+          </div>
+        `;
+
+        const expanded = card.querySelector('[data-expanded]');
+        card.querySelector('[data-toggle]').addEventListener('click', () => {
+          expanded.classList.toggle('open');
+        });
+        card.querySelector('[data-collapse]').addEventListener('click', () => {
+          expanded.classList.remove('open');
+        });
+
+        document.getElementById('messages').appendChild(card);
+        group = {
+          card,
+          title: card.querySelector('[data-title]'),
+          codeWrap: card.querySelector('[data-code-wrap]'),
+          ranges: [],
+          sections: []
+        };
+        readCardGroups.set(key, group);
+      }
+
+      group.ranges.push(rangeLabel);
+      group.sections.push({
+        startLine,
+        endLine,
+        languageTag: annotation.languageTag,
+        content: String(payload.content || '')
+      });
+
+      const uniqueRanges = [...new Set(group.ranges)].join(', ');
+      group.title.textContent = `📄 ${fileName} : ${uniqueRanges}`;
+      group.codeWrap.innerHTML = '';
+
+      group.sections.forEach((section) => {
+        const block = document.createElement('div');
+        block.className = 'read-summary';
+        block.textContent = `${fileName} (${section.startLine}–${section.endLine})`;
+        group.codeWrap.appendChild(block);
+
         const table = document.createElement('table');
         table.className = 'code-table';
+        const lines = section.content.split(/\r?\n/);
         lines.forEach((line, index) => {
           const tr = document.createElement('tr');
           const ln = document.createElement('td');
           ln.className = 'line-no';
-          ln.textContent = String(startLine + index);
+          ln.textContent = String(section.startLine + index);
           const code = document.createElement('td');
           code.className = 'line-code';
           const pre = document.createElement('pre');
           const codeTag = document.createElement('code');
           codeTag.textContent = line;
-          if (annotation.languageTag) {
-            codeTag.className = `language-${annotation.languageTag}`;
+          if (section.languageTag) {
+            codeTag.className = `language-${section.languageTag}`;
           }
           pre.appendChild(codeTag);
           code.appendChild(pre);
@@ -994,37 +1085,25 @@
           tr.appendChild(code);
           table.appendChild(tr);
         });
-        codeWrap.appendChild(table);
-        if (window.hljs) {
-          codeWrap.querySelectorAll('code').forEach((block) => window.hljs.highlightElement(block));
-        }
+        group.codeWrap.appendChild(table);
+      });
+
+      if (window.hljs) {
+        group.codeWrap.querySelectorAll('code').forEach((block) => window.hljs.highlightElement(block));
       }
-
-      card.querySelector('[data-toggle-text]').addEventListener('click', () => {
-        buildCodeTable();
-        expanded.classList.add('open');
-      });
-
-      card.querySelector('[data-collapse]').addEventListener('click', () => {
-        expanded.classList.remove('open');
-      });
-
-      document.getElementById('messages').appendChild(card);
+      syncEmptyState();
       scrollBottom();
     }
 
-    function renderPlanCard(steps, revised) {
+    function renderPlanCard(steps, revised, complexity, autoApproveSeconds) {
       const card = document.createElement('div');
       card.className = 'card';
-      card.innerHTML = `<div class="diff-header"><span>${revised ? '🧠 Revised plan ready' : '🧠 Proposed plan'}</span></div>`;
+      card.innerHTML = `<div class="diff-header"><span data-plan-title>${revised ? '▼ Revised plan' : '▼ Proposed plan'}</span><span>${steps.length} steps</span></div>`;
       const list = document.createElement('ol');
-      list.style.margin = '0';
-      list.style.paddingLeft = '18px';
+      list.className = 'plan-steps';
       steps.forEach((step) => {
         const li = document.createElement('li');
         li.textContent = step;
-        li.style.fontSize = '12px';
-        li.style.marginBottom = '4px';
         list.appendChild(li);
       });
       card.appendChild(list);
@@ -1037,27 +1116,36 @@
 
       const actions = document.createElement('div');
       actions.className = 'diff-actions';
-      actions.innerHTML = [
-        '<button class="btn primary" data-approve>✅ Approve & Execute</button>',
-        '<button class="btn warn" data-modify>✏️ Modify Plan</button>',
-        '<button class="btn danger" data-cancel>❌ Cancel</button>'
-      ].join('');
+      const includeModify = complexity === 'complex';
+      actions.innerHTML = includeModify
+        ? ['<button class="btn primary" data-approve>Approve</button>', '<button class="btn warn" data-modify>Modify</button>', '<button class="btn danger" data-cancel>Cancel</button>'].join('')
+        : ['<button class="btn primary" data-approve>Approve</button>', '<button class="btn danger" data-cancel>Cancel</button>'].join('');
       card.appendChild(actions);
+
+      const header = card.querySelector('[data-plan-title]');
+      header.addEventListener('click', () => {
+        const collapsed = list.classList.toggle('collapsed');
+        header.textContent = `${collapsed ? '▶' : '▼'} ${revised ? 'Revised plan' : 'Proposed plan'}`;
+      });
 
       actions.querySelector('[data-approve]').addEventListener('click', () => {
         vscode.postMessage({ type: 'planDecision', action: 'approve', approved: true });
-        actions.innerHTML = '<span class="verify-code ok">Plan approved. Executing...</span>';
+        list.classList.add('collapsed');
+        actions.innerHTML = '<span class="verify-code ok">✅ Plan approved - executing...</span>';
       });
 
-      actions.querySelector('[data-modify]').addEventListener('click', () => {
-        if (notes.hidden) {
-          notes.hidden = false;
-          notes.focus();
-          return;
-        }
-        vscode.postMessage({ type: 'planDecision', action: 'modify', approved: false, notes: notes.value.trim() });
-        actions.innerHTML = '<span class="verify-code">Requested plan modifications...</span>';
-      });
+      const modifyBtn = actions.querySelector('[data-modify]');
+      if (modifyBtn) {
+        modifyBtn.addEventListener('click', () => {
+          if (notes.hidden) {
+            notes.hidden = false;
+            notes.focus();
+            return;
+          }
+          vscode.postMessage({ type: 'planDecision', action: 'modify', approved: false, notes: notes.value.trim() });
+          actions.innerHTML = '<span class="verify-code">Requested plan modifications...</span>';
+        });
+      }
 
       notes.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
@@ -1071,7 +1159,36 @@
         actions.innerHTML = '<span class="verify-code fail">Task cancelled.</span>';
       });
 
+      if (Number(autoApproveSeconds || 0) > 0) {
+        let remaining = Number(autoApproveSeconds);
+        const countdown = document.createElement('div');
+        countdown.className = 'verify-code';
+        countdown.textContent = `Executing in ${remaining}...`;
+        card.appendChild(countdown);
+        const timer = setInterval(() => {
+          remaining -= 1;
+          if (remaining <= 0) {
+            clearInterval(timer);
+            vscode.postMessage({ type: 'planDecision', action: 'approve', approved: true });
+            list.classList.add('collapsed');
+            actions.innerHTML = '<span class="verify-code ok">✅ Plan auto-approved - executing...</span>';
+            countdown.remove();
+            return;
+          }
+          countdown.textContent = `Executing in ${remaining}...`;
+        }, 1000);
+
+        actions.querySelector('[data-cancel]').addEventListener('click', () => {
+          clearInterval(timer);
+        });
+        actions.querySelector('[data-approve]').addEventListener('click', () => {
+          clearInterval(timer);
+          countdown.remove();
+        });
+      }
+
       document.getElementById('messages').appendChild(card);
+      syncEmptyState();
       scrollBottom();
     }
 
@@ -1220,7 +1337,10 @@
           break;
         case 'cleared':
           document.getElementById('messages').innerHTML = '';
+          readCardGroups.clear();
+          document.getElementById('messages').innerHTML = '<div id="empty-state" class="empty-state"><strong>NIM Coder</strong><div>Ask me anything about your code.</div></div>';
           assistantBubble = null;
+          syncEmptyState();
           break;
         case 'enhancedPrompt':
           document.getElementById('chat-input').value = String(message.text || '');
@@ -1230,7 +1350,7 @@
           renderReadCard(message);
           break;
         case 'planCard':
-          renderPlanCard(message.steps || [], Boolean(message.revised));
+          renderPlanCard(message.steps || [], Boolean(message.revised), String(message.complexity || 'complex'), Number(message.autoApproveSeconds || 0));
           break;
         case 'diffCard':
           renderDiffCard(message);
@@ -1350,7 +1470,7 @@
         }
       });
 
-      addMessage('assistant', 'NIM Coder is ready. Agent mode now runs a full plan → confirm → diff review → verify workflow.');
+      syncEmptyState();
       updateTokenEstimate('');
     }
 

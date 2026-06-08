@@ -14075,14 +14075,25 @@ var WorkflowStateMachine = class {
 var NEVER_READ_PATTERNS = [
   /^venv\//i,
   /^\.venv\//i,
+  /^env\//i,
+  /^\.env\//i,
   /^node_modules\//i,
+  /\/\.mypy_cache\//i,
+  /\/\.pytest_cache\//i,
+  /\/\.tox\//i,
+  /\/migrations\//i,
+  /\/alembic\//i,
   /\/[^/]+\.dist-info\//i,
+  /\/[^/]+\.egg-info\//i,
   /\/site-packages\//i,
   /\/__pycache__\//i,
   /\/\.git\//i,
   /^dist\//i,
-  /^build\//i
+  /^build\//i,
+  /^\.next\//i,
+  /^out\//i
 ];
+var SOURCE_EXTENSIONS = [".py", ".ts", ".js", ".go", ".rs"];
 function nonce() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -14435,21 +14446,22 @@ ${userMessage}`].filter(Boolean).join("\n\n")
     this.post({ type: "workflowStart", request: userMessage });
     try {
       machine.transition("PLAN");
-      this.post({ type: "setStatus", phase: "reading", detail: "Locating source files" });
-      const pyFiles = await this.findPythonSourceFiles();
-      const searchPattern = this.buildSearchPattern(userMessage);
-      const matches = await this.searchPythonReferences(searchPattern);
-      this.workflowLog.push(`Discovered ${pyFiles.length} python files and ${matches.length} matching lines`);
-      const grepPreview = matches.slice(0, 20).map((match) => `${match.filePath}:${match.line}: ${match.text}`).join("\n") || "(no matches)";
-      this.post({
-        type: "readCard",
-        id: `read-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-        annotation: createReadAnnotation("search-results.txt", 1, Math.max(1, grepPreview.split(/\r?\n/).length), grepPreview),
-        content: grepPreview,
-        label: `grep -rn "${searchPattern}"`
-      });
+      this.post({ type: "setStatus", phase: "reading", detail: "Discovering source files" });
+      const sourceFiles = await this.getSourceFiles();
+      this.output.appendLine(`[agent-workflow] Source files found: ${sourceFiles.length} files`);
+      this.post({ type: "notice", text: `Source files found: ${sourceFiles.length} files` });
+      if (sourceFiles.length === 0) {
+        machine.transition("ABORTED");
+        this.post({ type: "setStatus", phase: "failed", detail: "No source files found." });
+        this.post({ type: "workflowDone", summary: "No source files found. Aborting task." });
+        return;
+      }
+      const complexity = this.classifyTaskComplexity(userMessage);
+      const targetHint = this.resolveNamedSourceFile(userMessage, sourceFiles);
+      const searchTerms = this.buildSearchTerms(userMessage);
+      const matches = await this.findSymbolMatches(sourceFiles, searchTerms, targetHint);
       const readSnippets = [];
-      const targetedReads = await this.readTargetedMatches(matches.slice(0, 5));
+      const targetedReads = await this.readTargetedMatches(matches.slice(0, 6));
       for (const read of targetedReads) {
         const annotation = createReadAnnotation(read.filePath, read.startLine, read.endLine, read.content);
         this.post({
@@ -14462,91 +14474,86 @@ ${userMessage}`].filter(Boolean).join("\n\n")
         this.markFileRead(read.filePath);
         readSnippets.push(`FILE: ${read.filePath} (lines ${read.startLine}-${read.endLine})
 ${read.content}`);
-        this.workflowLog.push(`Read ${read.filePath}:${read.startLine}-${read.endLine}`);
-      }
-      if (readSnippets.length === 0 && pyFiles.length > 0) {
-        const fallbackRead = await this.readTargetedFileSlice(pyFiles[0], 1, 40, "Fallback read");
-        if (fallbackRead) {
-          const annotation = createReadAnnotation(fallbackRead.filePath, fallbackRead.startLine, fallbackRead.endLine, fallbackRead.content);
-          this.post({
-            type: "readCard",
-            id: `read-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-            annotation,
-            content: fallbackRead.content,
-            label: fallbackRead.label
-          });
-          this.markFileRead(fallbackRead.filePath);
-          readSnippets.push(`FILE: ${fallbackRead.filePath} (lines ${fallbackRead.startLine}-${fallbackRead.endLine})
-${fallbackRead.content}`);
-        }
       }
       this.emitContextFiles();
-      this.post({ type: "setStatus", phase: "thinking" });
-      const planningPrompt = [
-        `User request: ${userMessage}`,
-        `Summary of prior actions: ${this.workflowSummary()}`,
-        "Create a numbered implementation plan with 3-6 concise steps for this request.",
-        ...readSnippets
-      ].join("\n\n");
-      const planResponse = await this.nim.chat({
-        model: routedModel,
-        temperature: 0.2,
-        maxTokens: 900,
-        messages: [
-          { role: "system", content: buildSystemPrompt("agent") },
-          { role: "user", content: planningPrompt }
-        ]
-      });
-      const planSteps = parseNumberedSteps(planResponse);
-      this.workflowLog.push(`Planned ${planSteps.length} steps`);
-      machine.transition("CONFIRM_PLAN");
-      this.post({ type: "planCard", steps: planSteps, raw: planResponse });
-      const firstDecision = await this.waitForPlanDecision();
-      if (firstDecision.cancelled) {
-        machine.transition("ABORTED");
-        this.post({ type: "setStatus", phase: "done" });
-        this.post({ type: "workflowDone", summary: "Task cancelled." });
-        return;
-      }
-      let finalPlan = planSteps;
-      if (!firstDecision.approved) {
-        this.post({ type: "setStatus", phase: "thinking", detail: "Updating plan" });
-        const revisedPlan = await this.nim.chat({
+      let executableSteps = [];
+      if (complexity === "simple") {
+        executableSteps = ["Locate references", "Generate targeted diff", "Apply approved changes"];
+      } else {
+        this.post({ type: "setStatus", phase: "thinking" });
+        const planningPrompt = [
+          `User request: ${userMessage}`,
+          `Task complexity: ${complexity}`,
+          `Summary of prior actions: ${this.workflowSummary()}`,
+          complexity === "medium" ? "Create a compact 2-3 step plan. Keep each step short." : "Create a numbered implementation plan with 3-6 concise steps for this request.",
+          ...readSnippets
+        ].join("\n\n");
+        const planResponse = await this.nim.chat({
           model: routedModel,
           temperature: 0.2,
           maxTokens: 900,
           messages: [
             { role: "system", content: buildSystemPrompt("agent") },
-            {
-              role: "user",
-              content: [
-                `Original request: ${userMessage}`,
-                `Current plan:
-${planSteps.map((step, index) => `${index + 1}. ${step}`).join("\n")}`,
-                `User modification request: ${firstDecision.notes || "Revise for clarity."}`,
-                `Summary of prior actions: ${this.workflowSummary()}`,
-                "Return only a revised numbered plan."
-              ].join("\n\n")
-            }
+            { role: "user", content: planningPrompt }
           ]
         });
-        finalPlan = parseNumberedSteps(revisedPlan);
-        this.post({ type: "planCard", steps: finalPlan, raw: revisedPlan, revised: true });
-        const secondDecision = await this.waitForPlanDecision();
-        if (secondDecision.cancelled || !secondDecision.approved) {
+        const planSteps = parseNumberedSteps(planResponse);
+        this.workflowLog.push(`Planned ${planSteps.length} steps (${complexity})`);
+        machine.transition("CONFIRM_PLAN");
+        this.post({
+          type: "planCard",
+          steps: planSteps,
+          raw: planResponse,
+          complexity,
+          autoApproveSeconds: complexity === "medium" ? 3 : 0
+        });
+        const firstDecision = await this.waitForPlanDecision();
+        if (firstDecision.cancelled) {
           machine.transition("ABORTED");
           this.post({ type: "setStatus", phase: "done" });
-          this.post({ type: "workflowDone", summary: secondDecision.cancelled ? "Task cancelled." : "Workflow aborted during plan confirmation." });
+          this.post({ type: "workflowDone", summary: "Task cancelled." });
           return;
         }
+        let finalPlan = planSteps;
+        if (!firstDecision.approved) {
+          this.post({ type: "setStatus", phase: "thinking", detail: "Updating plan" });
+          const revisedPlan = await this.nim.chat({
+            model: routedModel,
+            temperature: 0.2,
+            maxTokens: 900,
+            messages: [
+              { role: "system", content: buildSystemPrompt("agent") },
+              {
+                role: "user",
+                content: [
+                  `Original request: ${userMessage}`,
+                  `Current plan:
+${planSteps.map((step, index) => `${index + 1}. ${step}`).join("\n")}`,
+                  `User modification request: ${firstDecision.notes || "Revise for clarity."}`,
+                  `Summary of prior actions: ${this.workflowSummary()}`,
+                  "Return only a revised numbered plan."
+                ].join("\n\n")
+              }
+            ]
+          });
+          finalPlan = parseNumberedSteps(revisedPlan);
+          this.post({ type: "planCard", steps: finalPlan, raw: revisedPlan, revised: true, complexity });
+          const secondDecision = await this.waitForPlanDecision();
+          if (secondDecision.cancelled || !secondDecision.approved) {
+            machine.transition("ABORTED");
+            this.post({ type: "setStatus", phase: "done" });
+            this.post({ type: "workflowDone", summary: secondDecision.cancelled ? "Task cancelled." : "Workflow aborted during plan confirmation." });
+            return;
+          }
+        }
+        executableSteps = finalPlan.length > 0 ? finalPlan : ["Implement requested changes"];
       }
       machine.transition("EXECUTE");
-      const executableSteps = finalPlan.length > 0 ? finalPlan : ["Implement requested changes"];
       let modifiedFiles = 0;
       let removedLines = 0;
       for (let stepIndex = 0; stepIndex < executableSteps.length; stepIndex += 1) {
         const step = executableSteps[stepIndex];
-        const targetFiles = this.selectTargetFilesForStep(step, matches, pyFiles);
+        const targetFiles = this.selectTargetFilesForStep(step, matches, sourceFiles, targetHint);
         this.post({ type: "setStatus", phase: "running", detail: `Executing step ${stepIndex + 1}/${executableSteps.length}: ${step}` });
         this.post({
           type: "workflowProgress",
@@ -14694,59 +14701,90 @@ ${patchText}`,
       message: `${filePath} updated`
     });
   }
-  async runShellCapture(command) {
-    const root = vscode12.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!root) {
-      return { code: 1, stdout: "", stderr: "No workspace root" };
-    }
-    return new Promise((resolve) => {
-      const child = (0, import_node_child_process3.spawn)(command, { cwd: root, shell: true, env: process.env });
-      let stdout = "";
-      let stderr = "";
-      child.stdout.on("data", (chunk) => {
-        stdout += String(chunk);
-      });
-      child.stderr.on("data", (chunk) => {
-        stderr += String(chunk);
-      });
-      child.on("close", (code) => {
-        resolve({ code: Number(code ?? 1), stdout, stderr });
-      });
-    });
-  }
-  async findPythonSourceFiles() {
-    const result = await this.runShellCapture('find . -name "*.py" -not -path "*/venv/*" -not -path "*/.venv/*" -not -path "*/node_modules/*"');
-    const files = result.stdout.split(/\r?\n/).map((line) => normalizeRelativePath(line)).filter(Boolean).filter((line) => !shouldExcludeReadPath(line));
+  async getSourceFiles() {
+    const uris = await vscode12.workspace.findFiles("**/*", "**/{.git,node_modules,venv,.venv,env,.env,dist,build,.next,out}/**");
+    const files = uris.map((uri) => normalizeRelativePath(vscode12.workspace.asRelativePath(uri))).filter((filePath) => SOURCE_EXTENSIONS.some((ext) => filePath.endsWith(ext))).filter((filePath) => !shouldExcludeReadPath(filePath));
     return [...new Set(files)].sort();
   }
-  buildSearchPattern(userMessage) {
-    if (/scraping\s*bee|scrapingbee/i.test(userMessage)) {
-      return "ScrapingBee\\|scrapingbee\\|SCRAPINGBEE";
+  classifyTaskComplexity(userMessage) {
+    const text = userMessage.toLowerCase();
+    const simplePatterns = [
+      /remove\s+(the\s+)?(class|function|import|logic)/,
+      /rename\s+(a\s+)?(variable|function|class)/,
+      /fix\s+(a\s+)?typo/,
+      /add\s+(an\s+)?import/,
+      /change\s+(a\s+)?config/
+    ];
+    if (simplePatterns.some((pattern) => pattern.test(text))) {
+      return "simple";
     }
-    const token = userMessage.split(/[^A-Za-z0-9_]+/).filter((part) => part.length >= 3).slice(0, 3).join("\\|");
-    return token || "TODO\\|FIXME";
+    const complexPatterns = [/architecture|multi[- ]file|service|integration|schema|database/];
+    if (complexPatterns.some((pattern) => pattern.test(text))) {
+      return "complex";
+    }
+    return "medium";
   }
-  async searchPythonReferences(pattern) {
-    const command = `grep -rn "${pattern}" --include="*.py" --exclude-dir=venv --exclude-dir=.venv --exclude-dir=node_modules .`;
-    const result = await this.runShellCapture(command);
-    if (result.code !== 0 && !result.stdout.trim()) {
-      return [];
+  resolveNamedSourceFile(userMessage, sourceFiles) {
+    const fileMatch = userMessage.match(/\b([A-Za-z0-9_.-]+\.(py|ts|js|go|rs))\b/i);
+    if (!fileMatch) {
+      return void 0;
     }
-    return result.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
-      const match = line.match(/^\.\/(.+?):(\d+):(.*)$/) || line.match(/^(.+?):(\d+):(.*)$/);
-      if (!match) {
-        return void 0;
+    const requested = fileMatch[1].toLowerCase();
+    const exact = sourceFiles.find((filePath) => filePath.toLowerCase() === requested);
+    if (exact) {
+      return exact;
+    }
+    return sourceFiles.find((filePath) => path2.basename(filePath).toLowerCase() === requested);
+  }
+  buildSearchTerms(userMessage) {
+    if (/scraping\s*bee|scrapingbee/i.test(userMessage)) {
+      return ["ScrapingBee", "scrapingbee", "SCRAPINGBEE", "scraping_bee"];
+    }
+    const tokens = userMessage.split(/[^A-Za-z0-9_]+/).map((token) => token.trim()).filter((token) => token.length >= 4).slice(0, 4);
+    return tokens.length > 0 ? tokens : ["TODO"];
+  }
+  async findSymbolMatches(sourceFiles, terms, targetHint) {
+    const matches = [];
+    const lowered = terms.map((term) => term.toLowerCase());
+    const targetSet = targetHint ? /* @__PURE__ */ new Set([targetHint]) : void 0;
+    for (const filePath of sourceFiles) {
+      if (targetSet && !targetSet.has(filePath) && path2.basename(filePath) !== path2.basename(targetHint || "")) {
+        continue;
       }
-      const filePath = normalizeRelativePath(match[1]);
       if (shouldExcludeReadPath(filePath)) {
-        return void 0;
+        continue;
       }
-      return {
-        filePath,
-        line: Number(match[2]),
-        text: match[3].trim()
-      };
-    }).filter((item) => Boolean(item));
+      const root = vscode12.workspace.workspaceFolders?.[0]?.uri;
+      if (!root) {
+        break;
+      }
+      const uri = vscode12.Uri.joinPath(root, filePath);
+      let text = "";
+      try {
+        const bytes = await vscode12.workspace.fs.readFile(uri);
+        text = Buffer.from(bytes).toString("utf8");
+      } catch {
+        continue;
+      }
+      const lines = text.split(/\r?\n/);
+      for (let i2 = 0; i2 < lines.length; i2 += 1) {
+        const line = lines[i2];
+        const lineLower = line.toLowerCase();
+        if (!lowered.some((term) => lineLower.includes(term))) {
+          continue;
+        }
+        const lineStart = i2 + 1;
+        const lineEnd = Math.min(i2 + 60, lines.length);
+        matches.push({
+          filePath,
+          line: lineStart,
+          lineStart,
+          lineEnd,
+          text: line.trim()
+        });
+      }
+    }
+    return matches;
   }
   async readTargetedMatches(matches) {
     const results = [];
@@ -14757,8 +14795,8 @@ ${patchText}`,
         continue;
       }
       seen.add(key);
-      const startLine = Math.max(1, match.line - 20);
-      const endLine = match.line + 20;
+      const startLine = Math.max(1, match.lineStart);
+      const endLine = Math.max(startLine, match.lineEnd);
       const section = await this.readTargetedFileSlice(match.filePath, startLine, endLine, match.text);
       if (section) {
         results.push(section);
@@ -14792,7 +14830,10 @@ ${patchText}`,
       label: `\u{1F4C4} Read: ${filePath} (lines ${safeStart}-${safeEnd}) \u2014 ${symbolHint || "targeted section"}`
     };
   }
-  selectTargetFilesForStep(step, matches, pyFiles) {
+  selectTargetFilesForStep(step, matches, sourceFiles, targetHint) {
+    if (targetHint) {
+      return [targetHint];
+    }
     const candidate = matches.filter((match) => step.toLowerCase().includes(path2.basename(match.filePath).toLowerCase()) || /main\.py/i.test(match.filePath)).map((match) => match.filePath);
     if (candidate.length > 0) {
       return [...new Set(candidate)].slice(0, 4);
@@ -14800,7 +14841,7 @@ ${patchText}`,
     if (matches.length > 0) {
       return [...new Set(matches.map((match) => match.filePath))].slice(0, 4);
     }
-    return pyFiles.slice(0, 4);
+    return sourceFiles.slice(0, 4);
   }
   waitForPlanDecision() {
     return new Promise((resolve) => {
