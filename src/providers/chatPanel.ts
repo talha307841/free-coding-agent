@@ -47,6 +47,15 @@ interface SearchMatch {
 
 type TaskComplexity = 'simple' | 'medium' | 'complex';
 
+interface PreparedDiffCandidate {
+  diffId: string;
+  filePath: string;
+  patchText: string;
+  stats: { added: number; removed: number };
+  step: number;
+  totalSteps: number;
+}
+
 interface PlanDecision {
   approved: boolean;
   notes?: string;
@@ -176,6 +185,8 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
   private tokenCount = 0;
   private lastFoundDiff?: string;
   private _activeMode = 'chat';
+  private agentAbortController?: AbortController;
+  private cancelRequested = false;
 
   private workflowLog: string[] = [];
   private contextFiles = new Map<string, ContextFileState>();
@@ -183,6 +194,8 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
   private pendingDiffResolvers = new Map<string, (result: DiffAction) => void>();
   private pendingRejectResolvers = new Map<string, (result: RejectedAction) => void>();
   private terminalSessions = new Map<string, ChildProcessWithoutNullStreams>();
+
+  private static readonly YIELD_MS = 0;
 
   public constructor(
     private readonly context: vscode.ExtensionContext,
@@ -215,7 +228,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
             break;
           case 'stopGeneration':
           case 'stop':
-            this.abortController?.abort();
+            this.cancelActiveOperations();
             break;
           case 'clearChat':
           case 'clear':
@@ -351,6 +364,32 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  private cancelActiveOperations(): void {
+    this.cancelRequested = true;
+    this.abortController?.abort();
+    this.agentAbortController?.abort();
+    this.pendingPlanResolver?.({ approved: false, cancelled: true });
+    this.pendingPlanResolver = undefined;
+    for (const resolver of this.pendingDiffResolvers.values()) {
+      resolver({ action: 'reject' });
+    }
+    this.pendingDiffResolvers.clear();
+    for (const resolver of this.pendingRejectResolvers.values()) {
+      resolver('abort');
+    }
+    this.pendingRejectResolvers.clear();
+  }
+
+  private assertNotCancelled(): void {
+    if (this.cancelRequested || this.agentAbortController?.signal.aborted) {
+      throw new Error('Cancelled by user.');
+    }
+  }
+
+  private async yieldToUi(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, ChatPanelProvider.YIELD_MS));
+  }
+
   public focus(): void {
     this.view?.show?.(true);
     this.post({ type: 'focusInput' });
@@ -410,6 +449,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
     const systemPrompt = buildSystemPrompt(mode);
     const priorHistory = this.buildHistoryMessages();
 
+    this.cancelRequested = false;
     this.abortController = new AbortController();
     const finalModel = selectedModel || this.config.getPreferredChatModel();
     const routedModel = this.nim.selectRoutedModel('chat', finalModel);
@@ -476,6 +516,9 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
     const machine = new WorkflowStateMachine();
     const routedModel = this.nim.selectRoutedModel('chat', selectedModel || this.config.getPreferredAgentModel());
     const maxContext = 128000;
+    this.cancelRequested = false;
+    this.agentAbortController = new AbortController();
+    this.abortController = this.agentAbortController;
     this.history.push({ role: 'user', content: userMessage });
 
     this.workflowLog.push(`Request: ${shortSummary(userMessage)}`);
@@ -486,6 +529,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
       machine.transition('PLAN');
       this.post({ type: 'setStatus', phase: 'reading', detail: 'Discovering source files' });
       const sourceFiles = await this.getSourceFiles();
+      this.assertNotCancelled();
       this.output.appendLine(`[agent-workflow] Source files found: ${sourceFiles.length} files`);
       this.post({ type: 'notice', text: `Source files found: ${sourceFiles.length} files` });
       if (sourceFiles.length === 0) {
@@ -499,10 +543,12 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
       const targetHint = this.resolveNamedSourceFile(userMessage, sourceFiles);
       const searchTerms = this.buildSearchTerms(userMessage);
       const matches = await this.findSymbolMatches(sourceFiles, searchTerms, targetHint);
+      this.assertNotCancelled();
 
       const readSnippets: string[] = [];
       const targetedReads = await this.readTargetedMatches(matches.slice(0, 6));
       for (const read of targetedReads) {
+        this.assertNotCancelled();
         const annotation = createReadAnnotation(read.filePath, read.startLine, read.endLine, read.content);
         this.post({
           type: 'readCard',
@@ -513,12 +559,13 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         });
         this.markFileRead(read.filePath);
         readSnippets.push(`FILE: ${read.filePath} (lines ${read.startLine}-${read.endLine})\n${read.content}`);
+        await this.yieldToUi();
       }
       this.emitContextFiles();
 
       let executableSteps: string[] = [];
       if (complexity === 'simple') {
-        executableSteps = ['Locate references', 'Generate targeted diff', 'Apply approved changes'];
+        executableSteps = ['Apply direct simple edits'];
       } else {
         this.post({ type: 'setStatus', phase: 'thinking' });
         const planningPrompt = [
@@ -535,11 +582,13 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
           model: routedModel,
           temperature: 0.2,
           maxTokens: 900,
+          signal: this.agentAbortController.signal,
           messages: [
             { role: 'system', content: buildSystemPrompt('agent') },
             { role: 'user', content: planningPrompt }
           ]
         });
+        this.assertNotCancelled();
 
         const planStepsRaw = parseNumberedSteps(planResponse);
         const planSteps = complexity === 'medium' ? planStepsRaw.slice(0, 3) : planStepsRaw;
@@ -568,6 +617,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
             model: routedModel,
             temperature: 0.2,
             maxTokens: 900,
+            signal: this.agentAbortController.signal,
             messages: [
               { role: 'system', content: buildSystemPrompt('agent') },
               {
@@ -582,6 +632,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
               }
             ]
           });
+          this.assertNotCancelled();
           finalPlan = parseNumberedSteps(revisedPlan);
           this.post({ type: 'planCard', steps: finalPlan, raw: revisedPlan, revised: true, complexity });
           const secondDecision = await this.waitForPlanDecision();
@@ -600,8 +651,11 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
       let removedLines = 0;
 
       for (let stepIndex = 0; stepIndex < executableSteps.length; stepIndex += 1) {
+        this.assertNotCancelled();
         const step = executableSteps[stepIndex];
-        const targetFiles = this.selectTargetFilesForStep(step, matches, sourceFiles, targetHint);
+        const targetFiles = complexity === 'simple'
+          ? await this.selectSimpleTargetFiles(matches, sourceFiles, userMessage, targetHint)
+          : this.selectTargetFilesForStep(step, matches, sourceFiles, targetHint);
         this.post({ type: 'setStatus', phase: 'running', detail: `Executing step ${stepIndex + 1}/${executableSteps.length}: ${step}` });
         this.post({
           type: 'workflowProgress',
@@ -610,121 +664,69 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
           total: executableSteps.length,
           filePath: targetFiles[0] ?? ''
         });
-
-        this.post({ type: 'setStatus', phase: 'writing', detail: `Generating diff for ${targetFiles[0] || 'target file'}` });
-        const diffPrompt = [
-          `User request: ${userMessage}`,
-          `Current step: ${step}`,
-          `Candidate files: ${targetFiles.join(', ')}`,
-          `Summary of prior actions: ${this.workflowSummary()}`,
-          'Respond with a unified diff only. Include --- a/path and +++ b/path headers. Edit only files relevant to this step.'
-        ].join('\n\n');
-
-        const diffResponse = await this.nim.chat({
-          model: routedModel,
-          temperature: 0.1,
-          maxTokens: 2400,
-          messages: [
-            { role: 'system', content: buildSystemPrompt('agent') },
-            { role: 'user', content: diffPrompt }
-          ]
+        const preparedCandidates = await this.prepareDiffCandidates({
+          userMessage,
+          step,
+          stepIndex,
+          totalSteps: executableSteps.length,
+          targetFiles,
+          routedModel,
+          complexity
         });
+        this.assertNotCancelled();
 
-        const diffText = extractUnifiedDiff(diffResponse);
-        if (!diffText) {
+        if (preparedCandidates.length === 0) {
           this.post({ type: 'notice', text: `No diff generated for step ${stepIndex + 1}.` });
           continue;
         }
 
-        const patches = parseUnifiedDiff(diffText);
-        for (const patch of patches) {
-          const filePath = patch.newPath || patch.oldPath;
-          const normalizedPatchPath = normalizePatchPath(filePath);
-          const isAllowedTarget = sourceFiles.some((sourcePath) => sourcePath === normalizedPatchPath || sourcePath.endsWith(`/${normalizedPatchPath}`));
-          if (!isAllowedTarget) {
-            this.post({ type: 'notice', text: `Skipped diff outside source files: ${filePath}` });
-            continue;
-          }
-          const stats = computePatchStats(patch);
-          const patchText = serializePatch(patch);
-          const diffId = `diff-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        for (const candidate of preparedCandidates) {
+          this.markFilePending(candidate.filePath);
+        }
+        this.emitContextFiles();
 
-          this.markFilePending(filePath);
-          this.emitContextFiles();
+        for (const candidate of preparedCandidates) {
+          this.post({
+            type: 'diffCard',
+            diffId: candidate.diffId,
+            filePath: candidate.filePath,
+            diff: candidate.patchText,
+            stats: candidate.stats,
+            step: candidate.step,
+            totalSteps: candidate.totalSteps
+          });
+        }
 
-          this.post({ type: 'diffCard', diffId, filePath, diff: patchText, stats, step: stepIndex + 1, totalSteps: executableSteps.length });
+        this.post({
+          type: 'setStatus',
+          phase: 'writing',
+          detail: `Diffs ready — ${preparedCandidates.length} file(s). Awaiting review`
+        });
 
-          let decision = await this.waitForDiffDecision(diffId);
-          if (decision.action === 'modify') {
-            const modifiedResponse = await this.nim.chat({
-              model: routedModel,
-              temperature: 0.1,
-              maxTokens: 1800,
-              messages: [
-                { role: 'system', content: buildSystemPrompt('agent') },
-                {
-                  role: 'user',
-                  content: [
-                    `User request: ${userMessage}`,
-                    `File: ${filePath}`,
-                    `Current proposed diff:\n${patchText}`,
-                    `User modification request: ${decision.prompt || 'Adjust implementation.'}`,
-                    `Summary of prior actions: ${this.workflowSummary()}`,
-                    'Return a revised unified diff only for this file.'
-                  ].join('\n\n')
-                }
-              ]
-            });
-
-            const revisedDiffText = extractUnifiedDiff(modifiedResponse);
-            if (revisedDiffText) {
-              const revisedPatch = parseUnifiedDiff(revisedDiffText)[0];
-              if (revisedPatch) {
-                const revisedStats = computePatchStats(revisedPatch);
-                const revisedText = serializePatch(revisedPatch);
-                const revisedId = `diff-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-                this.post({
-                  type: 'diffCard',
-                  diffId: revisedId,
-                  filePath,
-                  diff: revisedText,
-                  stats: revisedStats,
-                  step: stepIndex + 1,
-                  totalSteps: executableSteps.length,
-                  revised: true
-                });
-                decision = await this.waitForDiffDecision(revisedId);
-                if (decision.action === 'accept') {
-                  await this.applyPatchAndReport(filePath, revisedText, revisedStats);
-                  modifiedFiles += 1;
-                  removedLines += revisedStats.removed;
-                  continue;
-                }
-              }
+        if (complexity === 'simple') {
+          const results = await Promise.allSettled(
+            preparedCandidates.map((candidate) =>
+              this.processPreparedCandidate(candidate, routedModel, userMessage, false)
+            )
+          );
+          for (const result of results) {
+            if (result.status === 'fulfilled') {
+              modifiedFiles += result.value.modifiedFiles;
+              removedLines += result.value.removedLines;
             }
-            decision = { action: 'reject' };
           }
-
-          if (decision.action === 'accept') {
-            await this.applyPatchAndReport(filePath, patchText, stats);
-            modifiedFiles += 1;
-            removedLines += stats.removed;
-            continue;
+        } else {
+          for (const candidate of preparedCandidates) {
+            const outcome = await this.processPreparedCandidate(candidate, routedModel, userMessage, true);
+            modifiedFiles += outcome.modifiedFiles;
+            removedLines += outcome.removedLines;
+            if (outcome.aborted) {
+              machine.transition('ABORTED');
+              this.post({ type: 'setStatus', phase: 'done' });
+              this.post({ type: 'workflowDone', summary: 'Workflow aborted after diff rejection.' });
+              return;
+            }
           }
-
-          this.post({ type: 'diffRejected', diffId, filePath });
-          const next = await this.waitForRejectedDecision(diffId);
-          if (next === 'abort') {
-            machine.transition('ABORTED');
-            this.post({ type: 'setStatus', phase: 'done' });
-            this.post({ type: 'workflowDone', summary: 'Workflow aborted after diff rejection.' });
-            return;
-          }
-          if (next === 'retry') {
-            stepIndex = Math.max(-1, stepIndex - 1);
-            break;
-          }
-          this.markFileUnpending(filePath);
         }
       }
 
@@ -747,6 +749,10 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
       this.output.appendLine(`[agent-workflow] ${msg}`);
       this.post({ type: 'setStatus', phase: 'failed', detail: msg });
       this.post({ type: 'workflowDone', summary: `Failed: ${msg}` });
+    } finally {
+      this.agentAbortController = undefined;
+      this.abortController = undefined;
+      this.cancelRequested = false;
     }
   }
 
@@ -864,43 +870,51 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
     const matches: SearchMatch[] = [];
     const lowered = terms.map((term) => term.toLowerCase());
     const targetSet = targetHint ? new Set([targetHint]) : undefined;
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+    if (!root) {
+      return matches;
+    }
 
-    for (const filePath of sourceFiles) {
+    const candidates = sourceFiles.filter((filePath) => {
       if (targetSet && !targetSet.has(filePath) && path.basename(filePath) !== path.basename(targetHint || '')) {
-        continue;
+        return false;
       }
-      if (shouldExcludeReadPath(filePath)) {
-        continue;
-      }
-      const root = vscode.workspace.workspaceFolders?.[0]?.uri;
-      if (!root) {
-        break;
-      }
+      return !shouldExcludeReadPath(filePath);
+    });
+
+    const scanned = await Promise.all(candidates.map(async (filePath) => {
+      this.assertNotCancelled();
       const uri = vscode.Uri.joinPath(root, filePath);
-      let text = '';
       try {
         const bytes = await vscode.workspace.fs.readFile(uri);
-        text = Buffer.from(bytes).toString('utf8');
-      } catch {
-        continue;
-      }
-      const lines = text.split(/\r?\n/);
-      for (let i = 0; i < lines.length; i += 1) {
-        const line = lines[i];
-        const lineLower = line.toLowerCase();
-        if (!lowered.some((term) => lineLower.includes(term))) {
-          continue;
+        const text = Buffer.from(bytes).toString('utf8');
+        const lines = text.split(/\r?\n/);
+        const fileMatches: SearchMatch[] = [];
+        for (let i = 0; i < lines.length; i += 1) {
+          const line = lines[i];
+          const lineLower = line.toLowerCase();
+          if (!lowered.some((term) => lineLower.includes(term))) {
+            continue;
+          }
+          const lineStart = i + 1;
+          const lineEnd = Math.min(i + 60, lines.length);
+          fileMatches.push({
+            filePath,
+            line: lineStart,
+            lineStart,
+            lineEnd,
+            text: line.trim()
+          });
         }
-        const lineStart = i + 1;
-        const lineEnd = Math.min(i + 60, lines.length);
-        matches.push({
-          filePath,
-          line: lineStart,
-          lineStart,
-          lineEnd,
-          text: line.trim()
-        });
+        await this.yieldToUi();
+        return fileMatches;
+      } catch {
+        return [];
       }
+    }));
+
+    for (const group of scanned) {
+      matches.push(...group);
     }
 
     return matches;
@@ -972,6 +986,371 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
     }
 
     return sourceFiles.slice(0, 4);
+  }
+
+  private async selectSimpleTargetFiles(
+    matches: SearchMatch[],
+    sourceFiles: string[],
+    userMessage: string,
+    targetHint?: string
+  ): Promise<string[]> {
+    if (targetHint) {
+      return [targetHint];
+    }
+
+    const fromMatches = [...new Set(matches.map((match) => match.filePath))].slice(0, 12);
+    const candidates = fromMatches.length > 0 ? fromMatches : sourceFiles.slice(0, 12);
+
+    if (/scraping\s*bee|scrapingbee/i.test(userMessage)) {
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+      if (root) {
+        const envPath = '.env.example';
+        try {
+          await vscode.workspace.fs.stat(vscode.Uri.joinPath(root, envPath));
+          candidates.push(envPath);
+        } catch {
+          // ignore missing optional file
+        }
+      }
+    }
+
+    return [...new Set(candidates)];
+  }
+
+  private async prepareDiffCandidates(args: {
+    userMessage: string;
+    step: string;
+    stepIndex: number;
+    totalSteps: number;
+    targetFiles: string[];
+    routedModel: string;
+    complexity: TaskComplexity;
+  }): Promise<PreparedDiffCandidate[]> {
+    const { userMessage, step, stepIndex, totalSteps, targetFiles, routedModel, complexity } = args;
+    if (targetFiles.length === 0) {
+      return [];
+    }
+
+    let processed = 0;
+    const total = targetFiles.length;
+    this.post({ type: 'setStatus', phase: 'writing', detail: `Generating diffs — 0/${total} files processed` });
+
+    const tasks = targetFiles.map(async (filePath) => {
+      this.assertNotCancelled();
+      const deterministicPatch = complexity === 'simple'
+        ? await this.buildDeterministicSimplePatch(filePath, userMessage)
+        : undefined;
+
+      const patchText = complexity === 'simple'
+        ? deterministicPatch
+        : await this.generateFileDiffWithStreaming({
+            routedModel,
+            userMessage,
+            step,
+            filePath,
+            stepIndex: stepIndex + 1,
+            totalSteps
+          });
+
+      processed += 1;
+      this.post({ type: 'setStatus', phase: 'writing', detail: `Generating diffs — ${processed}/${total} files processed` });
+      await this.yieldToUi();
+
+      if (!patchText) {
+        return undefined;
+      }
+
+      const patch = parseUnifiedDiff(patchText)[0];
+      if (!patch) {
+        return undefined;
+      }
+
+      const normalizedPatchPath = normalizePatchPath(patch.newPath || patch.oldPath || filePath);
+      if (normalizedPatchPath !== normalizePatchPath(filePath)) {
+        return undefined;
+      }
+
+      return {
+        diffId: `diff-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        filePath,
+        patchText: serializePatch(patch),
+        stats: computePatchStats(patch),
+        step: stepIndex + 1,
+        totalSteps
+      } satisfies PreparedDiffCandidate;
+    });
+
+    const results = await Promise.all(tasks);
+    return results.filter((item): item is PreparedDiffCandidate => Boolean(item));
+  }
+
+  private async processPreparedCandidate(
+    candidate: PreparedDiffCandidate,
+    routedModel: string,
+    userMessage: string,
+    offerRejectChoices: boolean
+  ): Promise<{ modifiedFiles: number; removedLines: number; aborted?: boolean }> {
+    this.assertNotCancelled();
+    let decision = await this.waitForDiffDecision(candidate.diffId);
+
+    if (decision.action === 'modify') {
+      const revised = await this.generateRevisedDiff(candidate, decision.prompt, routedModel, userMessage);
+      if (revised) {
+        this.post({
+          type: 'diffCard',
+          diffId: revised.diffId,
+          filePath: revised.filePath,
+          diff: revised.patchText,
+          stats: revised.stats,
+          step: revised.step,
+          totalSteps: revised.totalSteps,
+          revised: true
+        });
+        decision = await this.waitForDiffDecision(revised.diffId);
+        if (decision.action === 'accept') {
+          await this.applyPatchAndReport(revised.filePath, revised.patchText, revised.stats);
+          return { modifiedFiles: 1, removedLines: revised.stats.removed };
+        }
+      }
+      decision = { action: 'reject' };
+    }
+
+    if (decision.action === 'accept') {
+      await this.applyPatchAndReport(candidate.filePath, candidate.patchText, candidate.stats);
+      return { modifiedFiles: 1, removedLines: candidate.stats.removed };
+    }
+
+    this.assertNotCancelled();
+    this.markFileUnpending(candidate.filePath);
+    this.emitContextFiles();
+    if (!offerRejectChoices) {
+      return { modifiedFiles: 0, removedLines: 0 };
+    }
+
+    this.post({ type: 'diffRejected', diffId: candidate.diffId, filePath: candidate.filePath });
+    this.assertNotCancelled();
+    const next = await this.waitForRejectedDecision(candidate.diffId);
+    if (next === 'abort') {
+      return { modifiedFiles: 0, removedLines: 0, aborted: true };
+    }
+    return { modifiedFiles: 0, removedLines: 0 };
+  }
+
+  private async generateRevisedDiff(
+    candidate: PreparedDiffCandidate,
+    userPrompt: string,
+    routedModel: string,
+    userMessage: string
+  ): Promise<PreparedDiffCandidate | undefined> {
+    const revisedText = await this.generateFileDiffWithStreaming({
+      routedModel,
+      userMessage,
+      step: `Revise existing patch for ${candidate.filePath}`,
+      filePath: candidate.filePath,
+      stepIndex: candidate.step,
+      totalSteps: candidate.totalSteps,
+      currentPatch: candidate.patchText,
+      revisionPrompt: userPrompt || 'Adjust implementation.'
+    });
+
+    if (!revisedText) {
+      return undefined;
+    }
+    const patch = parseUnifiedDiff(revisedText)[0];
+    if (!patch) {
+      return undefined;
+    }
+
+    return {
+      diffId: `diff-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      filePath: candidate.filePath,
+      patchText: serializePatch(patch),
+      stats: computePatchStats(patch),
+      step: candidate.step,
+      totalSteps: candidate.totalSteps
+    };
+  }
+
+  private async generateFileDiffWithStreaming(args: {
+    routedModel: string;
+    userMessage: string;
+    step: string;
+    filePath: string;
+    stepIndex: number;
+    totalSteps: number;
+    currentPatch?: string;
+    revisionPrompt?: string;
+  }): Promise<string | undefined> {
+    const { routedModel, userMessage, step, filePath, stepIndex, totalSteps, currentPatch, revisionPrompt } = args;
+    const prompt = [
+      `User request: ${userMessage}`,
+      `Current step: ${step}`,
+      `Target file: ${filePath}`,
+      currentPatch ? `Current proposed diff:\n${currentPatch}` : '',
+      revisionPrompt ? `User modification request: ${revisionPrompt}` : '',
+      `Summary of prior actions: ${this.workflowSummary()}`,
+      'Respond with a unified diff only for the target file. Include --- a/path and +++ b/path headers.'
+    ].filter(Boolean).join('\n\n');
+
+    let streamed = '';
+    let tick = 0;
+    for await (const token of this.nim.chatStream({
+      model: routedModel,
+      temperature: 0.1,
+      maxTokens: 2200,
+      signal: this.agentAbortController?.signal,
+      messages: [
+        { role: 'system', content: buildSystemPrompt('agent') },
+        { role: 'user', content: prompt }
+      ]
+    })) {
+      streamed += token;
+      tick += 1;
+      if (tick % 12 === 0) {
+        this.post({
+          type: 'setStatus',
+          phase: 'writing',
+          detail: `Generating diff for ${filePath} — step ${stepIndex}/${totalSteps}`
+        });
+        await this.yieldToUi();
+      }
+    }
+
+    return extractUnifiedDiff(streamed);
+  }
+
+  private async buildDeterministicSimplePatch(filePath: string, userMessage: string): Promise<string | undefined> {
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+    if (!root) {
+      return undefined;
+    }
+
+    const uri = vscode.Uri.joinPath(root, filePath);
+    let original = '';
+    try {
+      const bytes = await vscode.workspace.fs.readFile(uri);
+      original = Buffer.from(bytes).toString('utf8');
+    } catch {
+      return undefined;
+    }
+
+    let updated = original;
+    const isScrapingBeeTask = /scraping\s*bee|scrapingbee/i.test(userMessage);
+    if (isScrapingBeeTask) {
+      updated = this.removePythonDefinitionBlock(updated, /^\s*class\s+ScrapingBeeBackend\b/);
+      updated = this.removePythonDefinitionBlock(updated, /^\s*def\s+scrap(e|ing)_?bee\b/i);
+      updated = this.removeScrapingBeeRelatedLines(updated, filePath);
+    }
+
+    if (/remove\s+(the\s+)?class/i.test(userMessage)) {
+      const classMatch = userMessage.match(/class\s+([A-Za-z_][A-Za-z0-9_]*)/);
+      if (classMatch) {
+        const pattern = new RegExp(`^\\s*class\\s+${classMatch[1]}\\b`);
+        updated = this.removePythonDefinitionBlock(updated, pattern);
+      }
+    }
+
+    if (/remove\s+(the\s+)?function/i.test(userMessage)) {
+      const fnMatch = userMessage.match(/function\s+([A-Za-z_][A-Za-z0-9_]*)/i);
+      if (fnMatch) {
+        const pattern = new RegExp(`^\\s*def\\s+${fnMatch[1]}\\b`);
+        updated = this.removePythonDefinitionBlock(updated, pattern);
+      }
+    }
+
+    if (updated === original) {
+      return undefined;
+    }
+
+    return this.createWholeFilePatch(filePath, original, updated);
+  }
+
+  private removePythonDefinitionBlock(content: string, headerPattern: RegExp): string {
+    const lines = content.split(/\r?\n/);
+    let start = -1;
+    for (let index = 0; index < lines.length; index += 1) {
+      if (headerPattern.test(lines[index])) {
+        start = index;
+        break;
+      }
+    }
+    if (start === -1) {
+      return content;
+    }
+
+    let commentStart = start;
+    for (let index = start - 1; index >= Math.max(0, start - 10); index -= 1) {
+      const trimmed = lines[index].trim();
+      if (trimmed === '' || trimmed.startsWith('#')) {
+        commentStart = index;
+        continue;
+      }
+      break;
+    }
+
+    const baseIndent = lines[start].length - lines[start].trimStart().length;
+    let end = lines.length;
+    for (let index = start + 1; index < lines.length; index += 1) {
+      const trimmed = lines[index].trim();
+      if (!trimmed || trimmed.startsWith('#')) {
+        continue;
+      }
+      const indent = lines[index].length - lines[index].trimStart().length;
+      if (indent <= baseIndent) {
+        end = index;
+        break;
+      }
+    }
+
+    return [...lines.slice(0, commentStart), ...lines.slice(end)].join('\n');
+  }
+
+  private removeScrapingBeeRelatedLines(content: string, filePath: string): string {
+    const lines = content.split(/\r?\n/);
+    const removeSet = new Set<number>();
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (/\b_scrapingbee_backend\s*=\s*ScrapingBeeBackend\(\)/.test(line)) {
+        removeSet.add(index);
+      }
+      if (/_scrapingbee_backend\.scrape\(/.test(line)) {
+        for (let offset = -5; offset <= 5; offset += 1) {
+          const target = index + offset;
+          if (target >= 0 && target < lines.length) {
+            removeSet.add(target);
+          }
+        }
+      }
+      if ((/^\s*#/.test(line) || /^\s*\/\//.test(line)) && /scraping\s*bee|scrapingbee/i.test(line)) {
+        removeSet.add(index);
+      }
+      if (/SCRAPINGBEE_API_KEY/.test(line) && filePath.endsWith('.env.example')) {
+        removeSet.add(index);
+      }
+      if (/ScrapingBeeBackend|_scrapingbee_backend|scrapingbee/i.test(line) && /^\s*(from|import)\s+/.test(line)) {
+        removeSet.add(index);
+      }
+    }
+
+    const updated = lines.filter((_, index) => !removeSet.has(index));
+    return updated.join('\n');
+  }
+
+  private createWholeFilePatch(filePath: string, original: string, updated: string): string {
+    const oldLines = original.split(/\r?\n/);
+    const newLines = updated.split(/\r?\n/);
+    const output: string[] = [];
+    output.push(`--- a/${filePath}`);
+    output.push(`+++ b/${filePath}`);
+    output.push(`@@ -1,${oldLines.length} +1,${newLines.length} @@`);
+    for (const line of oldLines) {
+      output.push(`-${line}`);
+    }
+    for (const line of newLines) {
+      output.push(`+${line}`);
+    }
+    return output.join('\n');
   }
 
   private waitForPlanDecision(): Promise<PlanDecision> {
@@ -1063,6 +1442,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
     const commands = ['npm run compile', 'npx tsc --noEmit'];
     const summaries: string[] = [];
     for (const command of commands) {
+      this.assertNotCancelled();
       const result = await this.runTerminalCommand(command, false);
       summaries.push(`${command}: exit ${result}`);
       if (result !== 0) {

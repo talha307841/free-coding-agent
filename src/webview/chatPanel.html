@@ -565,6 +565,52 @@
       padding: 10px 12px 12px;
     }
 
+    .sticky-status {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 78px;
+      z-index: 100;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: rgba(20, 30, 44, 0.96);
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .sticky-status.hidden {
+      display: none;
+    }
+
+    .sticky-status-main {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text);
+      min-width: 0;
+    }
+
+    .sticky-status-text {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .sticky-status-cancel {
+      border-radius: 8px;
+      border: 1px solid rgba(255, 112, 112, 0.5);
+      background: rgba(255, 112, 112, 0.12);
+      color: #ffb0b0;
+      padding: 5px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
     .input-row {
       display: grid;
       grid-template-columns: 34px minmax(0, 1fr) auto auto;
@@ -670,6 +716,7 @@
       }
       .side { display: none; }
       .message { max-width: 96%; }
+      .sticky-status { bottom: 86px; }
     }
   </style>
 </head>
@@ -709,6 +756,14 @@
       <button id="enhance-btn" class="enhance-btn">✨ Enhance prompt</button>
     </div>
 
+    <div id="sticky-status" class="sticky-status hidden" role="status" aria-live="polite">
+      <div class="sticky-status-main">
+        <span class="status-dot"></span>
+        <span id="sticky-status-text" class="sticky-status-text">Working...</span>
+      </div>
+      <button id="sticky-status-cancel" class="sticky-status-cancel">Cancel</button>
+    </div>
+
     <footer class="input-wrap">
       <div class="input-row">
         <button id="attach-btn" class="attach" title="Attach file">📎</button>
@@ -739,6 +794,9 @@
     let contextLimitTokens = 128000;
     const terminalCards = new Map();
     const readCardGroups = new Map();
+    let stickyStatusHideTimer = null;
+    let stickyStatusPulseTimer = null;
+    let stickyStatusSnapshot = { phase: 'idle', detail: '', updatedAt: 0 };
 
     function now() {
       return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -800,14 +858,6 @@
     }
 
     function setStatus(phase, detail = '') {
-      if (!assistantBubble) {
-        return;
-      }
-      const el = assistantBubble.querySelector('[data-status]');
-      if (!phase || phase === 'done' || phase === 'idle') {
-        el.hidden = true;
-        return;
-      }
       const mapping = {
         reading: 'Reading file...',
         thinking: 'Thinking...',
@@ -816,12 +866,58 @@
         failed: 'Failed'
       };
       const label = mapping[phase] || String(phase);
-      el.hidden = false;
-      el.innerHTML = `<span class="status-dot"></span><span>${esc(label)} - ${esc(detail || 'working')}</span>`;
+      const status = document.getElementById('sticky-status');
+      const text = document.getElementById('sticky-status-text');
+      const cancel = document.getElementById('sticky-status-cancel');
+
+      if (stickyStatusHideTimer) {
+        clearTimeout(stickyStatusHideTimer);
+        stickyStatusHideTimer = null;
+      }
+
+      stickyStatusSnapshot = {
+        phase,
+        detail: detail || 'working',
+        updatedAt: Date.now()
+      };
+
+      if (!phase || phase === 'idle') {
+        status.classList.add('hidden');
+        return;
+      }
+
+      if (phase === 'done') {
+        status.classList.remove('hidden');
+        cancel.style.display = 'none';
+        text.textContent = `${detail || 'Task complete'} — done ✅`;
+        stickyStatusHideTimer = setTimeout(() => {
+          status.classList.add('hidden');
+        }, 2000);
+        return;
+      }
+
+      status.classList.remove('hidden');
+      cancel.style.display = 'inline-flex';
+      text.textContent = `${label} — ${detail || 'working'}`;
+
+      if (!stickyStatusPulseTimer) {
+        stickyStatusPulseTimer = setInterval(() => {
+          if (!stickyStatusSnapshot.phase || ['idle', 'done', 'failed'].includes(stickyStatusSnapshot.phase)) {
+            return;
+          }
+          const elapsed = ((Date.now() - stickyStatusSnapshot.updatedAt) / 1000).toFixed(1);
+          const node = document.getElementById('sticky-status-text');
+          node.textContent = `${mapping[stickyStatusSnapshot.phase] || stickyStatusSnapshot.phase} — ${stickyStatusSnapshot.detail} (${elapsed}s)`;
+        }, 500);
+      }
+
+      if (phase === 'failed') {
+        cancel.style.display = 'none';
+      }
     }
 
-    function clearWorkingState() {
-      setStatus('done');
+    function clearWorkingState(finalPhase = 'done', detail = '') {
+      setStatus(finalPhase, detail);
       document.querySelectorAll('[data-status]').forEach((node) => {
         node.hidden = true;
         node.innerHTML = '';
@@ -1326,20 +1422,17 @@
           scrollBottom();
           break;
         case 'streamEnd':
-          clearWorkingState();
+          clearWorkingState('done');
           break;
         case 'setStatus':
           setStatus(String(message.phase || ''), String(message.detail || ''));
           if (String(message.phase || '') === 'failed') {
-            clearWorkingState();
-          }
-          if (String(message.phase || '') === 'done') {
-            clearWorkingState();
+            clearWorkingState('failed', String(message.detail || 'Failed'));
           }
           break;
         case 'streamError':
           addMessage('assistant', `❌ ${message.message || 'Generation failed'}`);
-          clearWorkingState();
+          clearWorkingState('failed', String(message.message || 'Generation failed'));
           break;
         case 'cleared':
           document.getElementById('messages').innerHTML = '';
@@ -1372,7 +1465,7 @@
           break;
         case 'workflowDone':
           addMessage('assistant', `✅ ${message.summary}`);
-          clearWorkingState();
+          clearWorkingState('done', String(message.summary || 'Task complete'));
           break;
         case 'terminalStart':
           renderTerminalStart(message.terminalId, message.command);
@@ -1391,7 +1484,7 @@
           break;
         case 'summaryDone':
           addMessage('assistant', 'Chat history compressed for future replies.');
-          clearWorkingState();
+          clearWorkingState('done');
           break;
         case 'summaryUnavailable':
           addMessage('assistant', 'No chat history available to summarize yet.');
@@ -1480,6 +1573,10 @@
         } else {
           side.style.display = 'none';
         }
+      });
+
+      document.getElementById('sticky-status-cancel').addEventListener('click', () => {
+        vscode.postMessage({ type: 'stopGeneration' });
       });
 
       syncEmptyState();
