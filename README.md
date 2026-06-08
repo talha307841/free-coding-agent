@@ -121,6 +121,8 @@ Or install from the VS Code Marketplace *(coming soon)*.
 
 The production landing page is in `nim-coder/`.
 
+Live website: https://free-coding-agent.vercel.app/
+
 ```bash
 # Run the website locally
 npm run dev
