@@ -2,7 +2,7 @@
 
 <img src="https://img.shields.io/badge/NIM_Coder-AI_Agent-00FF94?style=for-the-badge&logoColor=black" alt="NIM Coder"/>
 
-<img src="./media/nim-coder-banner.svg" alt="NIM Coder banner" width="100%"/>
+<img src="./media/agent-step-execution.png" alt="NIM Coder banner" width="100%"/>
 
 # NIM Coder
 

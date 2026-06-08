@@ -1,10 +1,18 @@
 {
-  "name": "nim-coder",
-  "displayName": "NIM Coder",
+  "name": "nim-coder-agent",
+  "displayName": "NIM Coder Agent",
   "description": "NVIDIA NIM powered coding assistant for VS Code",
   "version": "0.1.0",
-  "publisher": "nimcoder",
+  "publisher": "MuhammadTalhaYousaf",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/talha307841/free-coding-agent.git"
+  },
+  "homepage": "https://github.com/talha307841/free-coding-agent#readme",
+  "bugs": {
+    "url": "https://github.com/talha307841/free-coding-agent/issues"
+  },
   "engines": {
     "vscode": "^1.85.0",
     "node": ">=18"
