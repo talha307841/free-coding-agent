@@ -37,6 +37,30 @@ interface ContextFileState {
   pending: boolean;
 }
 
+interface SearchMatch {
+  filePath: string;
+  line: number;
+  text: string;
+}
+
+interface PlanDecision {
+  approved: boolean;
+  notes?: string;
+  cancelled?: boolean;
+}
+
+const NEVER_READ_PATTERNS = [
+  /^venv\//i,
+  /^\.venv\//i,
+  /^node_modules\//i,
+  /\/[^/]+\.dist-info\//i,
+  /\/site-packages\//i,
+  /\/__pycache__\//i,
+  /\/\.git\//i,
+  /^dist\//i,
+  /^build\//i
+];
+
 function nonce(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -92,6 +116,16 @@ function shortSummary(text: string): string {
   return `${compact.slice(0, 117)}...`;
 }
 
+function normalizeRelativePath(value: string): string {
+  const clean = value.replace(/^\.\//, '').replace(/\\/g, '/').trim();
+  return clean;
+}
+
+function shouldExcludeReadPath(filePath: string): boolean {
+  const rel = normalizeRelativePath(filePath);
+  return NEVER_READ_PATTERNS.some((pattern) => pattern.test(rel));
+}
+
 export class ChatPanelProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = 'nimcoder.chatView';
 
@@ -105,7 +139,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
 
   private workflowLog: string[] = [];
   private contextFiles = new Map<string, ContextFileState>();
-  private pendingPlanResolver?: (result: { approved: boolean; notes?: string }) => void;
+  private pendingPlanResolver?: (result: PlanDecision) => void;
   private pendingDiffResolvers = new Map<string, (result: DiffAction) => void>();
   private pendingRejectResolvers = new Map<string, (result: RejectedAction) => void>();
   private terminalSessions = new Map<string, ChildProcessWithoutNullStreams>();
@@ -218,12 +252,18 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
             break;
           }
           case 'planDecision':
+            {
+              const action = String(message.action ?? '');
+              const cancelled = Boolean(message.cancelled) || action === 'cancel';
+              const approved = action ? action === 'approve' : Boolean(message.approved);
             this.pendingPlanResolver?.({
-              approved: Boolean(message.approved),
-              notes: String(message.notes ?? '')
+              approved,
+              notes: String(message.notes ?? ''),
+              cancelled
             });
             this.pendingPlanResolver = undefined;
             break;
+            }
           case 'diffDecision': {
             const diffId = String(message.diffId ?? '');
             const resolver = this.pendingDiffResolvers.get(diffId);
@@ -295,8 +335,11 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
 
   private async runStandardChat(userMessage: string, selectedModel: string, mode: ChatMode): Promise<void> {
     const active = vscode.window.activeTextEditor;
+    const activePath = active ? vscode.workspace.asRelativePath(active.document.uri) : '';
     const activeContext = active
-      ? `ACTIVE_FILE_CONTEXT_ONLY: ${vscode.workspace.asRelativePath(active.document.uri)}\nCURSOR: ${active.selection.active.line + 1}:${active.selection.active.character + 1}\nNOTE: This active file is context only. Do not edit it unless the user explicitly asked for this file.\n${active.document.getText()}`
+      ? shouldExcludeReadPath(activePath)
+        ? `ACTIVE_FILE_CONTEXT_ONLY: ${activePath}\nNOTE: skipped because file path is excluded from agent reads.`
+        : `ACTIVE_FILE_CONTEXT_ONLY: ${activePath}\nCURSOR: ${active.selection.active.line + 1}:${active.selection.active.character + 1}\nNOTE: This active file is context only. Do not edit it unless the user explicitly asked for this file.\n${active.document.getText()}`
       : 'ACTIVE_FILE: none';
 
     let workspaceContext = '';
@@ -310,6 +353,10 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
     const fileMentions = [...userMessage.matchAll(/@file\s+([^\s]+)/g)].map((match) => match[1]);
     if (fileMentions.length > 0) {
       for (const file of fileMentions) {
+        if (shouldExcludeReadPath(file)) {
+          workspaceContext += `\n\nFILE: ${file}\n[skipped: excluded path]`;
+          continue;
+        }
         const uri = vscode.Uri.joinPath(vscode.workspace.workspaceFolders?.[0]?.uri ?? vscode.Uri.file('.'), file);
         try {
           const bytes = await vscode.workspace.fs.readFile(uri);
@@ -397,27 +444,59 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
 
     try {
       machine.transition('PLAN');
-      this.post({ type: 'setStatus', phase: 'reading', detail: 'Collecting files' });
-      const files = await this.contextBuilder.topRelevant(userMessage, 6);
-      const readSnippets: string[] = [];
+      this.post({ type: 'setStatus', phase: 'reading', detail: 'Locating source files' });
 
-      for (const file of files.slice(0, 4)) {
-        const text = file.content;
-        const lines = text.split(/\r?\n/);
-        const startLine = 1;
-        const endLine = Math.min(lines.length, 220);
-        const snippet = lines.slice(startLine - 1, endLine).join('\n');
-        const annotation = createReadAnnotation(file.path, startLine, endLine, snippet);
+      const pyFiles = await this.findPythonSourceFiles();
+      const searchPattern = this.buildSearchPattern(userMessage);
+      const matches = await this.searchPythonReferences(searchPattern);
+      this.workflowLog.push(`Discovered ${pyFiles.length} python files and ${matches.length} matching lines`);
+
+      const grepPreview = matches
+        .slice(0, 20)
+        .map((match) => `${match.filePath}:${match.line}: ${match.text}`)
+        .join('\n') || '(no matches)';
+
+      this.post({
+        type: 'readCard',
+        id: `read-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        annotation: createReadAnnotation('search-results.txt', 1, Math.max(1, grepPreview.split(/\r?\n/).length), grepPreview),
+        content: grepPreview,
+        label: `grep -rn "${searchPattern}"`
+      });
+
+      const readSnippets: string[] = [];
+      const targetedReads = await this.readTargetedMatches(matches.slice(0, 5));
+
+      for (const read of targetedReads) {
+        const annotation = createReadAnnotation(read.filePath, read.startLine, read.endLine, read.content);
         this.post({
           type: 'readCard',
           id: `read-${Date.now()}-${Math.random().toString(16).slice(2)}`,
           annotation,
-          content: snippet
+          content: read.content,
+          label: read.label
         });
-        this.markFileRead(file.path);
-        readSnippets.push(`FILE: ${file.path} (lines ${startLine}-${endLine})\n${snippet}`);
-        this.workflowLog.push(`Read ${file.path}:${startLine}-${endLine}`);
+        this.markFileRead(read.filePath);
+        readSnippets.push(`FILE: ${read.filePath} (lines ${read.startLine}-${read.endLine})\n${read.content}`);
+        this.workflowLog.push(`Read ${read.filePath}:${read.startLine}-${read.endLine}`);
       }
+
+      if (readSnippets.length === 0 && pyFiles.length > 0) {
+        const fallbackRead = await this.readTargetedFileSlice(pyFiles[0], 1, 40, 'Fallback read');
+        if (fallbackRead) {
+          const annotation = createReadAnnotation(fallbackRead.filePath, fallbackRead.startLine, fallbackRead.endLine, fallbackRead.content);
+          this.post({
+            type: 'readCard',
+            id: `read-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            annotation,
+            content: fallbackRead.content,
+            label: fallbackRead.label
+          });
+          this.markFileRead(fallbackRead.filePath);
+          readSnippets.push(`FILE: ${fallbackRead.filePath} (lines ${fallbackRead.startLine}-${fallbackRead.endLine})\n${fallbackRead.content}`);
+        }
+      }
+
       this.emitContextFiles();
 
       this.post({ type: 'setStatus', phase: 'thinking' });
@@ -427,6 +506,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         'Create a numbered implementation plan with 3-6 concise steps for this request.',
         ...readSnippets
       ].join('\n\n');
+
       const planResponse = await this.nim.chat({
         model: routedModel,
         temperature: 0.2,
@@ -436,13 +516,23 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
           { role: 'user', content: planningPrompt }
         ]
       });
+
       const planSteps = parseNumberedSteps(planResponse);
       this.workflowLog.push(`Planned ${planSteps.length} steps`);
 
       machine.transition('CONFIRM_PLAN');
       this.post({ type: 'planCard', steps: planSteps, raw: planResponse });
-      const planDecision = await this.waitForPlanDecision();
-      if (!planDecision.approved) {
+      const firstDecision = await this.waitForPlanDecision();
+
+      if (firstDecision.cancelled) {
+        machine.transition('ABORTED');
+        this.post({ type: 'setStatus', phase: 'done' });
+        this.post({ type: 'workflowDone', summary: 'Task cancelled.' });
+        return;
+      }
+
+      let finalPlan = planSteps;
+      if (!firstDecision.approved) {
         this.post({ type: 'setStatus', phase: 'thinking', detail: 'Updating plan' });
         const revisedPlan = await this.nim.chat({
           model: routedModel,
@@ -455,38 +545,42 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
               content: [
                 `Original request: ${userMessage}`,
                 `Current plan:\n${planSteps.map((step, index) => `${index + 1}. ${step}`).join('\n')}`,
-                `User modification request: ${planDecision.notes || 'Revise for clarity.'}`,
+                `User modification request: ${firstDecision.notes || 'Revise for clarity.'}`,
                 `Summary of prior actions: ${this.workflowSummary()}`,
                 'Return only a revised numbered plan.'
               ].join('\n\n')
             }
           ]
         });
-        const revisedSteps = parseNumberedSteps(revisedPlan);
-        this.post({ type: 'planCard', steps: revisedSteps, raw: revisedPlan, revised: true });
+        finalPlan = parseNumberedSteps(revisedPlan);
+        this.post({ type: 'planCard', steps: finalPlan, raw: revisedPlan, revised: true });
         const secondDecision = await this.waitForPlanDecision();
-        if (!secondDecision.approved) {
+        if (secondDecision.cancelled || !secondDecision.approved) {
           machine.transition('ABORTED');
-          this.post({ type: 'workflowDone', summary: 'Workflow aborted during plan confirmation.' });
+          this.post({ type: 'setStatus', phase: 'done' });
+          this.post({ type: 'workflowDone', summary: secondDecision.cancelled ? 'Task cancelled.' : 'Workflow aborted during plan confirmation.' });
           return;
         }
       }
 
       machine.transition('EXECUTE');
-      const executableSteps = planSteps.length > 0 ? planSteps : ['Implement requested changes'];
+      const executableSteps = finalPlan.length > 0 ? finalPlan : ['Implement requested changes'];
+      let modifiedFiles = 0;
+      let removedLines = 0;
 
       for (let stepIndex = 0; stepIndex < executableSteps.length; stepIndex += 1) {
         const step = executableSteps[stepIndex];
-        const targetFiles = files.slice(0, 3).map((file) => file.path);
+        const targetFiles = this.selectTargetFilesForStep(step, matches, pyFiles);
+        this.post({ type: 'setStatus', phase: 'running', detail: `Executing step ${stepIndex + 1}/${executableSteps.length}: ${step}` });
         this.post({
           type: 'workflowProgress',
-          label: `Step ${stepIndex + 1}/${executableSteps.length}: ${step}`,
+          label: `🔧 Executing step ${stepIndex + 1}/${executableSteps.length}: ${step}`,
           current: stepIndex + 1,
           total: executableSteps.length,
           filePath: targetFiles[0] ?? ''
         });
-        this.post({ type: 'setStatus', phase: 'thinking', detail: `Planning edits for step ${stepIndex + 1}` });
 
+        this.post({ type: 'setStatus', phase: 'writing', detail: `Generating diff for ${targetFiles[0] || 'target file'}` });
         const diffPrompt = [
           `User request: ${userMessage}`,
           `Current step: ${step}`,
@@ -517,19 +611,11 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
           const stats = computePatchStats(patch);
           const patchText = serializePatch(patch);
           const diffId = `diff-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
           this.markFilePending(filePath);
           this.emitContextFiles();
 
-          this.post({ type: 'setStatus', phase: 'writing', detail: `Proposing changes to ${filePath}` });
-          this.post({
-            type: 'diffCard',
-            diffId,
-            filePath,
-            diff: patchText,
-            stats,
-            step: stepIndex + 1,
-            totalSteps: executableSteps.length
-          });
+          this.post({ type: 'diffCard', diffId, filePath, diff: patchText, stats, step: stepIndex + 1, totalSteps: executableSteps.length });
 
           let decision = await this.waitForDiffDecision(diffId);
           if (decision.action === 'modify') {
@@ -552,6 +638,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
                 }
               ]
             });
+
             const revisedDiffText = extractUnifiedDiff(modifiedResponse);
             if (revisedDiffText) {
               const revisedPatch = parseUnifiedDiff(revisedDiffText)[0];
@@ -570,11 +657,10 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
                   revised: true
                 });
                 decision = await this.waitForDiffDecision(revisedId);
-                if (decision.action === 'modify') {
-                  decision = { action: 'reject' };
-                }
                 if (decision.action === 'accept') {
                   await this.applyPatchAndReport(filePath, revisedText, revisedStats);
+                  modifiedFiles += 1;
+                  removedLines += revisedStats.removed;
                   continue;
                 }
               }
@@ -584,6 +670,8 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
 
           if (decision.action === 'accept') {
             await this.applyPatchAndReport(filePath, patchText, stats);
+            modifiedFiles += 1;
+            removedLines += stats.removed;
             continue;
           }
 
@@ -591,6 +679,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
           const next = await this.waitForRejectedDecision(diffId);
           if (next === 'abort') {
             machine.transition('ABORTED');
+            this.post({ type: 'setStatus', phase: 'done' });
             this.post({ type: 'workflowDone', summary: 'Workflow aborted after diff rejection.' });
             return;
           }
@@ -611,7 +700,7 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
       this.post({ type: 'setStatus', phase: 'done' });
       this.post({
         type: 'workflowDone',
-        summary: `Completed workflow with verification result: ${verification}`
+        summary: `All changes applied. Summary: ${modifiedFiles} files modified, ${removedLines} lines removed. Verification: ${verification}`
       });
       this.history.push({ role: 'assistant', content: `Workflow complete. ${verification}` });
       this.tokenCount += estimateTokens(userMessage) + estimateTokens(this.workflowSummary());
@@ -642,7 +731,146 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  private waitForPlanDecision(): Promise<{ approved: boolean; notes?: string }> {
+  private async runShellCapture(command: string): Promise<{ code: number; stdout: string; stderr: string }> {
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!root) {
+      return { code: 1, stdout: '', stderr: 'No workspace root' };
+    }
+
+    return new Promise((resolve) => {
+      const child = spawn(command, { cwd: root, shell: true, env: process.env });
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout.on('data', (chunk) => {
+        stdout += String(chunk);
+      });
+      child.stderr.on('data', (chunk) => {
+        stderr += String(chunk);
+      });
+      child.on('close', (code) => {
+        resolve({ code: Number(code ?? 1), stdout, stderr });
+      });
+    });
+  }
+
+  private async findPythonSourceFiles(): Promise<string[]> {
+    const result = await this.runShellCapture('find . -name "*.py" -not -path "*/venv/*" -not -path "*/.venv/*" -not -path "*/node_modules/*"');
+    const files = result.stdout
+      .split(/\r?\n/)
+      .map((line) => normalizeRelativePath(line))
+      .filter(Boolean)
+      .filter((line) => !shouldExcludeReadPath(line));
+    return [...new Set(files)].sort();
+  }
+
+  private buildSearchPattern(userMessage: string): string {
+    if (/scraping\s*bee|scrapingbee/i.test(userMessage)) {
+      return 'ScrapingBee\\|scrapingbee\\|SCRAPINGBEE';
+    }
+
+    const token = userMessage
+      .split(/[^A-Za-z0-9_]+/)
+      .filter((part) => part.length >= 3)
+      .slice(0, 3)
+      .join('\\|');
+    return token || 'TODO\\|FIXME';
+  }
+
+  private async searchPythonReferences(pattern: string): Promise<SearchMatch[]> {
+    const command = `grep -rn "${pattern}" --include="*.py" --exclude-dir=venv --exclude-dir=.venv --exclude-dir=node_modules .`;
+    const result = await this.runShellCapture(command);
+    if (result.code !== 0 && !result.stdout.trim()) {
+      return [];
+    }
+
+    return result.stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const match = line.match(/^\.\/(.+?):(\d+):(.*)$/) || line.match(/^(.+?):(\d+):(.*)$/);
+        if (!match) {
+          return undefined;
+        }
+        const filePath = normalizeRelativePath(match[1]);
+        if (shouldExcludeReadPath(filePath)) {
+          return undefined;
+        }
+        return {
+          filePath,
+          line: Number(match[2]),
+          text: match[3].trim()
+        } satisfies SearchMatch;
+      })
+      .filter((item): item is SearchMatch => Boolean(item));
+  }
+
+  private async readTargetedMatches(matches: SearchMatch[]): Promise<Array<{ filePath: string; startLine: number; endLine: number; content: string; label: string }>> {
+    const results: Array<{ filePath: string; startLine: number; endLine: number; content: string; label: string }> = [];
+    const seen = new Set<string>();
+    for (const match of matches) {
+      const key = `${match.filePath}:${match.line}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      const startLine = Math.max(1, match.line - 20);
+      const endLine = match.line + 20;
+      const section = await this.readTargetedFileSlice(match.filePath, startLine, endLine, match.text);
+      if (section) {
+        results.push(section);
+      }
+    }
+    return results;
+  }
+
+  private async readTargetedFileSlice(filePath: string, startLine: number, endLine: number, symbolHint: string): Promise<{ filePath: string; startLine: number; endLine: number; content: string; label: string } | undefined> {
+    if (shouldExcludeReadPath(filePath)) {
+      return undefined;
+    }
+
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+    if (!root) {
+      return undefined;
+    }
+
+    const uri = vscode.Uri.joinPath(root, filePath);
+    const bytes = await vscode.workspace.fs.readFile(uri);
+    const text = Buffer.from(bytes).toString('utf8');
+    const lines = text.split(/\r?\n/);
+    if (lines.length === 0) {
+      return undefined;
+    }
+    const safeStart = Math.max(1, Math.min(startLine, lines.length));
+    const safeEnd = Math.max(safeStart, Math.min(endLine, lines.length));
+    const content = lines.slice(safeStart - 1, safeEnd).join('\n');
+    return {
+      filePath,
+      startLine: safeStart,
+      endLine: safeEnd,
+      content,
+      label: `📄 Read: ${filePath} (lines ${safeStart}-${safeEnd}) — ${symbolHint || 'targeted section'}`
+    };
+  }
+
+  private selectTargetFilesForStep(step: string, matches: SearchMatch[], pyFiles: string[]): string[] {
+    const candidate = matches
+      .filter((match) => step.toLowerCase().includes(path.basename(match.filePath).toLowerCase()) || /main\.py/i.test(match.filePath))
+      .map((match) => match.filePath);
+
+    if (candidate.length > 0) {
+      return [...new Set(candidate)].slice(0, 4);
+    }
+
+    if (matches.length > 0) {
+      return [...new Set(matches.map((match) => match.filePath))].slice(0, 4);
+    }
+
+    return pyFiles.slice(0, 4);
+  }
+
+  private waitForPlanDecision(): Promise<PlanDecision> {
     return new Promise((resolve) => {
       this.pendingPlanResolver = resolve;
     });
