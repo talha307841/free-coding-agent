@@ -822,6 +822,10 @@
 
     function clearWorkingState() {
       setStatus('done');
+      document.querySelectorAll('[data-status]').forEach((node) => {
+        node.hidden = true;
+        node.innerHTML = '';
+      });
       assistantBubble = null;
       setGenerating(false);
     }
@@ -844,7 +848,7 @@
     function updateTokenEstimate(text) {
       const estimate = Math.ceil(String(text || '').length / 4);
       const tokenEl = document.getElementById('token-count');
-      tokenEl.textContent = `~${estimate} tokens | ${Math.ceil(contextUsedTokens / 1000)}k/128k used`;
+      tokenEl.textContent = `~${estimate} tokens | ${contextUsedTokens.toLocaleString()}/128k used`;
       tokenEl.title = `Input: ~${estimate.toLocaleString()} tokens | Context: ~${contextUsedTokens.toLocaleString()} tokens | Limit: ${contextLimitTokens.toLocaleString()}`;
     }
 
@@ -1285,7 +1289,8 @@
       isGenerating = value;
       const send = document.getElementById('send-btn');
       const text = document.getElementById('chat-input').value.trim();
-      send.disabled = value || !text;
+      send.textContent = value ? '■ Stop' : '➤ Send';
+      send.disabled = value ? false : !text;
     }
 
     function handleSend() {
@@ -1311,6 +1316,7 @@
           if (!assistantBubble) {
             addStatusBubble();
           }
+          setGenerating(true);
           break;
         case 'streamToken':
           assistantText += String(message.token || '');
@@ -1425,7 +1431,13 @@
         }
       });
 
-      sendBtn.addEventListener('click', handleSend);
+      sendBtn.addEventListener('click', () => {
+        if (isGenerating) {
+          vscode.postMessage({ type: 'stopGeneration' });
+          return;
+        }
+        handleSend();
+      });
 
       document.getElementById('clear-btn').addEventListener('click', () => {
         vscode.postMessage({ type: 'clearChat' });

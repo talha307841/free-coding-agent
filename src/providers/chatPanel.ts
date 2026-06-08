@@ -76,6 +76,14 @@ const NEVER_READ_PATTERNS = [
 ];
 
 const SOURCE_EXTENSIONS = ['.py', '.ts', '.js', '.go', '.rs'];
+const EXCLUDE_DIRS = new Set([
+  'venv', '.venv', 'env', '.env',
+  'node_modules', '__pycache__', '.git',
+  'dist', 'build', '.next', 'out',
+  'site-packages', 'dist-info', 'egg-info',
+  '.mypy_cache', '.pytest_cache', '.tox',
+  'migrations', 'alembic'
+]);
 
 function nonce(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -140,6 +148,22 @@ function normalizeRelativePath(value: string): string {
 function shouldExcludeReadPath(filePath: string): boolean {
   const rel = normalizeRelativePath(filePath);
   return NEVER_READ_PATTERNS.some((pattern) => pattern.test(rel));
+}
+
+function extensionOf(filePath: string): string {
+  const idx = filePath.lastIndexOf('.');
+  return idx === -1 ? '' : filePath.slice(idx).toLowerCase();
+}
+
+function normalizePatchPath(filePath: string): string {
+  const rel = normalizeRelativePath(filePath);
+  if (rel.startsWith('a/')) {
+    return rel.slice(2);
+  }
+  if (rel.startsWith('b/')) {
+    return rel.slice(2);
+  }
+  return rel;
 }
 
 export class ChatPanelProvider implements vscode.WebviewViewProvider {
@@ -517,7 +541,8 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
           ]
         });
 
-        const planSteps = parseNumberedSteps(planResponse);
+        const planStepsRaw = parseNumberedSteps(planResponse);
+        const planSteps = complexity === 'medium' ? planStepsRaw.slice(0, 3) : planStepsRaw;
         this.workflowLog.push(`Planned ${planSteps.length} steps (${complexity})`);
         machine.transition('CONFIRM_PLAN');
         this.post({
@@ -614,6 +639,12 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
         const patches = parseUnifiedDiff(diffText);
         for (const patch of patches) {
           const filePath = patch.newPath || patch.oldPath;
+          const normalizedPatchPath = normalizePatchPath(filePath);
+          const isAllowedTarget = sourceFiles.some((sourcePath) => sourcePath === normalizedPatchPath || sourcePath.endsWith(`/${normalizedPatchPath}`));
+          if (!isAllowedTarget) {
+            this.post({ type: 'notice', text: `Skipped diff outside source files: ${filePath}` });
+            continue;
+          }
           const stats = computePatchStats(patch);
           const patchText = serializePatch(patch);
           const diffId = `diff-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -738,12 +769,47 @@ export class ChatPanelProvider implements vscode.WebviewViewProvider {
   }
 
   private async getSourceFiles(): Promise<string[]> {
-    const uris = await vscode.workspace.findFiles('**/*', '**/{.git,node_modules,venv,.venv,env,.env,dist,build,.next,out}/**');
-    const files = uris
-      .map((uri) => normalizeRelativePath(vscode.workspace.asRelativePath(uri)))
-      .filter((filePath) => SOURCE_EXTENSIONS.some((ext) => filePath.endsWith(ext)))
-      .filter((filePath) => !shouldExcludeReadPath(filePath));
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+    if (!root) {
+      return [];
+    }
+
+    const files: string[] = [];
+    await this.walkSourceTree(root, '', files);
     return [...new Set(files)].sort();
+  }
+
+  private async walkSourceTree(root: vscode.Uri, relativeDir: string, files: string[]): Promise<void> {
+    const dirUri = relativeDir ? vscode.Uri.joinPath(root, relativeDir) : root;
+    let entries: [string, vscode.FileType][] = [];
+    try {
+      entries = await vscode.workspace.fs.readDirectory(dirUri);
+    } catch {
+      return;
+    }
+
+    for (const [name, type] of entries) {
+      if (type === vscode.FileType.Directory) {
+        if (EXCLUDE_DIRS.has(name) || name.endsWith('.dist-info')) {
+          continue;
+        }
+        const next = relativeDir ? `${relativeDir}/${name}` : name;
+        await this.walkSourceTree(root, next, files);
+        continue;
+      }
+      if (type !== vscode.FileType.File) {
+        continue;
+      }
+
+      const relPath = normalizeRelativePath(relativeDir ? `${relativeDir}/${name}` : name);
+      if (shouldExcludeReadPath(relPath)) {
+        continue;
+      }
+      if (!SOURCE_EXTENSIONS.includes(extensionOf(relPath))) {
+        continue;
+      }
+      files.push(relPath);
+    }
   }
 
   private classifyTaskComplexity(userMessage: string): TaskComplexity {

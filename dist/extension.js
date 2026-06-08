@@ -14094,6 +14094,27 @@ var NEVER_READ_PATTERNS = [
   /^out\//i
 ];
 var SOURCE_EXTENSIONS = [".py", ".ts", ".js", ".go", ".rs"];
+var EXCLUDE_DIRS = /* @__PURE__ */ new Set([
+  "venv",
+  ".venv",
+  "env",
+  ".env",
+  "node_modules",
+  "__pycache__",
+  ".git",
+  "dist",
+  "build",
+  ".next",
+  "out",
+  "site-packages",
+  "dist-info",
+  "egg-info",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".tox",
+  "migrations",
+  "alembic"
+]);
 function nonce() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -14146,6 +14167,20 @@ function normalizeRelativePath(value) {
 function shouldExcludeReadPath(filePath) {
   const rel = normalizeRelativePath(filePath);
   return NEVER_READ_PATTERNS.some((pattern) => pattern.test(rel));
+}
+function extensionOf(filePath) {
+  const idx = filePath.lastIndexOf(".");
+  return idx === -1 ? "" : filePath.slice(idx).toLowerCase();
+}
+function normalizePatchPath(filePath) {
+  const rel = normalizeRelativePath(filePath);
+  if (rel.startsWith("a/")) {
+    return rel.slice(2);
+  }
+  if (rel.startsWith("b/")) {
+    return rel.slice(2);
+  }
+  return rel;
 }
 var ChatPanelProvider = class {
   constructor(context, config, nim, contextBuilder, output) {
@@ -14497,7 +14532,8 @@ ${read.content}`);
             { role: "user", content: planningPrompt }
           ]
         });
-        const planSteps = parseNumberedSteps(planResponse);
+        const planStepsRaw = parseNumberedSteps(planResponse);
+        const planSteps = complexity === "medium" ? planStepsRaw.slice(0, 3) : planStepsRaw;
         this.workflowLog.push(`Planned ${planSteps.length} steps (${complexity})`);
         machine.transition("CONFIRM_PLAN");
         this.post({
@@ -14587,6 +14623,12 @@ ${planSteps.map((step, index) => `${index + 1}. ${step}`).join("\n")}`,
         const patches = parseUnifiedDiff(diffText);
         for (const patch of patches) {
           const filePath = patch.newPath || patch.oldPath;
+          const normalizedPatchPath = normalizePatchPath(filePath);
+          const isAllowedTarget = sourceFiles.some((sourcePath) => sourcePath === normalizedPatchPath || sourcePath.endsWith(`/${normalizedPatchPath}`));
+          if (!isAllowedTarget) {
+            this.post({ type: "notice", text: `Skipped diff outside source files: ${filePath}` });
+            continue;
+          }
           const stats = computePatchStats(patch);
           const patchText = serializePatch(patch);
           const diffId = `diff-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -14702,9 +14744,43 @@ ${patchText}`,
     });
   }
   async getSourceFiles() {
-    const uris = await vscode12.workspace.findFiles("**/*", "**/{.git,node_modules,venv,.venv,env,.env,dist,build,.next,out}/**");
-    const files = uris.map((uri) => normalizeRelativePath(vscode12.workspace.asRelativePath(uri))).filter((filePath) => SOURCE_EXTENSIONS.some((ext) => filePath.endsWith(ext))).filter((filePath) => !shouldExcludeReadPath(filePath));
+    const root = vscode12.workspace.workspaceFolders?.[0]?.uri;
+    if (!root) {
+      return [];
+    }
+    const files = [];
+    await this.walkSourceTree(root, "", files);
     return [...new Set(files)].sort();
+  }
+  async walkSourceTree(root, relativeDir, files) {
+    const dirUri = relativeDir ? vscode12.Uri.joinPath(root, relativeDir) : root;
+    let entries = [];
+    try {
+      entries = await vscode12.workspace.fs.readDirectory(dirUri);
+    } catch {
+      return;
+    }
+    for (const [name, type] of entries) {
+      if (type === vscode12.FileType.Directory) {
+        if (EXCLUDE_DIRS.has(name) || name.endsWith(".dist-info")) {
+          continue;
+        }
+        const next = relativeDir ? `${relativeDir}/${name}` : name;
+        await this.walkSourceTree(root, next, files);
+        continue;
+      }
+      if (type !== vscode12.FileType.File) {
+        continue;
+      }
+      const relPath = normalizeRelativePath(relativeDir ? `${relativeDir}/${name}` : name);
+      if (shouldExcludeReadPath(relPath)) {
+        continue;
+      }
+      if (!SOURCE_EXTENSIONS.includes(extensionOf(relPath))) {
+        continue;
+      }
+      files.push(relPath);
+    }
   }
   classifyTaskComplexity(userMessage) {
     const text = userMessage.toLowerCase();
