@@ -117,6 +117,26 @@ Or install from the VS Code Marketplace *(coming soon)*.
 
 ---
 
+## Website
+
+The production landing page is in `nim-coder/`.
+
+```bash
+# Run the website locally
+npm run dev
+
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy
+cd nim-coder
+vercel
+
+# Or connect GitHub repo to vercel.com for auto-deploy on push
+```
+
+---
+
 ## Usage
 
 1. Open a project folder in VS Code

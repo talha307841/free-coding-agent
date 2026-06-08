@@ -21,6 +21,9 @@
   ],
   "main": "./dist/extension.js",
   "scripts": {
+    "dev": "npx serve nim-coder",
+    "build": "echo 'Static site - no build needed'",
+    "deploy": "vercel --prod",
     "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
     "watch": "npm run compile -- --watch",
     "test": "vscode-test"
