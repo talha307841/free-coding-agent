@@ -1,6 +1,6 @@
 {
-  "name": "nim-coder",
-  "displayName": "NIM Coder",
+  "name": "nim-coder-agent",
+  "displayName": "NIM Coder Agent",
   "description": "NVIDIA NIM powered coding assistant for VS Code",
   "version": "0.1.0",
   "publisher": "MuhammadTalhaYousaf",

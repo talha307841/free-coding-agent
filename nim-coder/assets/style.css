@@ -706,6 +706,61 @@ section {
   margin: 0 auto 36px;
 }
 
+.marketplace-card {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin: 0 auto 28px;
+  max-width: 720px;
+  text-align: left;
+}
+
+.marketplace-kicker {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--green4);
+  margin-bottom: 8px;
+  letter-spacing: 0.4px;
+}
+
+.marketplace-title {
+  font-family: var(--mono);
+  font-size: 24px;
+  color: var(--white);
+  margin-bottom: 6px;
+}
+
+.marketplace-meta {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--green5);
+  margin-bottom: 10px;
+}
+
+.marketplace-copy {
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--gray);
+  margin-bottom: 14px;
+}
+
+.marketplace-link {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--green);
+  border: 1px solid var(--green);
+  border-radius: 4px;
+  padding: 8px 12px;
+  transition: all 0.2s;
+}
+
+.marketplace-link:hover {
+  background: var(--green);
+  color: var(--bg);
+}
+
 .code-block {
   background: var(--bg3);
   border: 1px solid var(--border);
@@ -952,6 +1007,11 @@ body::after {
   .hero-btns {
     flex-direction: column;
     align-items: center;
+  }
+
+  .marketplace-card {
+    text-align: center;
+    padding: 20px;
   }
 
   .cursor,
