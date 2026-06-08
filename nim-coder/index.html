@@ -7,151 +7,230 @@
   <meta name="description" content="NIM Coder is an AI coding agent for VS Code that plans, confirms, and shows diffs before applying changes." />
   <meta property="og:title" content="NIM Coder | AI Coding Agent for VS Code" />
   <meta property="og:description" content="Plan, confirm, diff, accept, ship. AI-assisted coding with full human review." />
-  <meta property="og:type" content="website" />
   <meta property="og:image" content="./banner.svg" />
-  <meta property="og:url" content="https://github.com/talha307841/free-coding-agent" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://free-coding-agent.vercel.app/" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="./assets/style.css" />
 </head>
 <body>
-  <header class="nav" data-stagger="1">
-    <div class="container nav-inner">
-      <a class="brand" href="#top" aria-label="NIM Coder home">NIM <span>Coder</span><span class="cursor">_</span></a>
-      <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">☰</button>
-      <nav class="nav-links" aria-label="Primary">
-        <a href="https://github.com/talha307841/free-coding-agent#readme" target="_blank" rel="noreferrer">Docs</a>
-        <a href="https://github.com/talha307841/free-coding-agent" target="_blank" rel="noreferrer">GitHub</a>
-        <a class="install-link" href="https://github.com/talha307841/free-coding-agent#installation" target="_blank" rel="noreferrer">Install</a>
-      </nav>
+  <div class="cursor" id="cursor"></div>
+  <div class="cursor-dot" id="cursorDot"></div>
+
+  <nav id="navbar">
+    <a href="#" class="nav-logo">NIM <span>Coder</span><span class="cur">_</span></a>
+    <div class="nav-links" id="navLinks">
+      <a href="#demo">Demo</a>
+      <a href="#features">Features</a>
+      <a href="#workflow">Workflow</a>
+      <a href="https://github.com/talha307841/free-coding-agent#readme">Docs</a>
+      <a href="https://github.com/talha307841/free-coding-agent">GitHub</a>
+      <a href="https://github.com/talha307841/free-coding-agent#installation" class="nav-cta">Install</a>
     </div>
-  </header>
+    <div class="nav-hamburger" id="hamburger" aria-label="Toggle menu" role="button" tabindex="0">
+      <span></span><span></span><span></span>
+    </div>
+  </nav>
 
-  <main id="top">
-    <section class="hero">
-      <canvas id="codeRain" aria-hidden="true"></canvas>
-      <div class="hero-overlay"></div>
-      <img class="hero-banner" src="./banner.svg" alt="NIM Coder banner art" loading="lazy" />
-      <div class="container hero-content">
-        <p class="beta-badge" data-stagger="2">⚡ Now in beta</p>
-        <h1 data-stagger="3">NIM <span>Coder</span><span class="cursor">_</span></h1>
-        <p class="hero-sub" data-stagger="4">plan → confirm → diff → accept → ship</p>
-        <p class="hero-copy" data-stagger="5">An AI coding agent for VS Code. Reviews your code, proposes exact changes, waits for your approval before writing a single byte.</p>
-        <div class="hero-actions" data-stagger="6">
-          <a class="btn btn-primary" href="https://github.com/talha307841/free-coding-agent#installation" target="_blank" rel="noreferrer">⬇ Install Extension</a>
-          <a class="btn btn-ghost" href="https://github.com/talha307841/free-coding-agent" target="_blank" rel="noreferrer">★ View on GitHub</a>
+  <section id="hero">
+    <canvas id="rain-canvas"></canvas>
+    <div class="hero-vignette"></div>
+    <div class="hero-content">
+      <div class="hero-badge">Now in beta</div>
+      <h1 class="hero-h1">
+        <span class="nim">NIM</span> <span class="coder">Coder</span><span class="blink">_</span>
+      </h1>
+      <p class="hero-tagline">plan -> confirm -> diff -> accept -> ship</p>
+      <p class="hero-desc">An AI coding agent for VS Code. Reviews your code, proposes exact changes, waits for your approval before writing a single byte.</p>
+      <div class="hero-btns">
+        <a href="https://github.com/talha307841/free-coding-agent#installation" class="btn-primary">Install Extension</a>
+        <a href="https://github.com/talha307841/free-coding-agent" class="btn-secondary">View on GitHub</a>
+      </div>
+    </div>
+    <div class="hero-scroll">scroll</div>
+  </section>
+
+  <section id="demo">
+    <div class="reveal">
+      <p class="section-label">// demo</p>
+      <h2 class="section-h2">From prompt to diff<br />in under 5 seconds</h2>
+      <p class="section-sub">No silent rewrites. Every change is a reviewable diff you approve before anything touches disk.</p>
+    </div>
+    <div class="demo-grid reveal">
+      <div class="demo-card">
+        <div class="demo-card-inner">
+          <span class="demo-badge">Proposing changes</span>
+          <img src="./screenshot1.png" alt="NIM Coder diff viewer with Accept Modify Reject buttons" loading="lazy" />
         </div>
       </div>
-      <p class="scroll-indicator">↓ scroll</p>
-    </section>
-
-    <section class="section reveal" id="demo">
-      <div class="container">
-        <p class="section-kicker">// demo</p>
-        <h2>From prompt to diff in under 5 seconds</h2>
-        <div class="demo-grid">
-          <article class="shot-card">
-            <p class="shot-badge">✍️ Proposing changes</p>
-            <img src="./screenshot1.png" alt="NIM Coder proposing diff changes" loading="lazy" />
-          </article>
-          <article class="shot-card">
-            <p class="shot-badge">⚡ Multi-step execution</p>
-            <img src="./screenshot2.png" alt="NIM Coder multi-step execution flow" loading="lazy" />
-          </article>
-        </div>
-
-        <article class="terminal reveal" id="typewriterTerminal" aria-label="Terminal command demo">
-          <header>
-            <span></span><span></span><span></span>
-            <p>nim-coder terminal</p>
-          </header>
-          <pre id="terminalOutput"></pre>
-        </article>
-      </div>
-    </section>
-
-    <section class="section reveal" id="features">
-      <div class="container">
-        <p class="section-kicker">// features</p>
-        <h2>Built for engineers who read before they merge</h2>
-        <div class="feature-grid">
-          <article class="feature-card"><p class="symbol">grep</p><h3>Smart file discovery</h3><p>Scans only source files and skips noisy folders like node_modules and build output.</p></article>
-          <article class="feature-card"><p class="symbol">diff</p><h3>Inline diff viewer</h3><p>Shows a reviewable patch with accept, modify, or reject controls before writing changes.</p></article>
-          <article class="feature-card"><p class="symbol">&&</p><h3>Parallel execution</h3><p>Generates multi-file diffs at once so larger refactors stay fast and predictable.</p></article>
-          <article class="feature-card"><p class="symbol">plan</p><h3>Complexity-aware planning</h3><p>Simple asks run immediately while deeper tasks become explicit, ordered execution plans.</p></article>
-          <article class="feature-card"><p class="symbol">ctx</p><h3>Full context tracking</h3><p>Maintains file and conversation context so changes remain coherent across long sessions.</p></article>
-          <article class="feature-card"><p class="symbol">&gt;&gt;_</p><h3>Terminal integration</h3><p>Runs shell commands inline and streams output while preserving human approval checkpoints.</p></article>
+      <div class="demo-card">
+        <div class="demo-card-inner">
+          <span class="demo-badge">Multi-step execution</span>
+          <img src="./screenshot2.png" alt="NIM Coder multi-step agent execution with file confirmations" loading="lazy" />
         </div>
       </div>
-    </section>
+    </div>
 
-    <section class="section reveal" id="workflow">
-      <div class="container">
-        <p class="section-kicker">// workflow</p>
-        <h2>Zero surprises. Every time.</h2>
-        <div class="flow">
-          <div class="step step-1">You type a task</div>
-          <div class="arrow">→</div>
-          <div class="step step-2">Agent reads your files</div>
-          <div class="arrow">→</div>
-          <div class="step step-3">Diff is generated</div>
-          <div class="arrow">→</div>
-          <div class="step step-4">You review &amp; accept</div>
-          <div class="arrow">→</div>
-          <div class="step step-5">Changes applied</div>
+    <div class="terminal-window reveal" id="terminal-demo">
+      <div class="terminal-chrome">
+        <div class="dot red"></div>
+        <div class="dot yellow"></div>
+        <div class="dot green"></div>
+        <span class="terminal-title">nim-coder - agent mode</span>
+      </div>
+      <div class="terminal-body" id="term-body">
+        <span class="t-line" id="tl0"><span class="t-prompt">$ </span><span class="t-input">nim-coder: "remove the scraping bee backend from main.py"</span></span>
+        <span class="t-line" id="tl1"><span class="t-prompt"> </span></span>
+        <span class="t-line" id="tl2"><span class="t-file">Read: main.py (lines 337-420)</span><span class="t-info"> - ScrapingBeeBackend found</span></span>
+        <span class="t-line" id="tl3"><span class="t-info">Proposing: </span><span class="t-reject">-46 lines removed</span><span class="t-info"> +0 added</span></span>
+        <span class="t-line" id="tl4"><span class="t-divider">---------------------------------------------</span></span>
+        <span class="t-line" id="tl5"><span class="t-accept">[ Accept Changes ]</span><span class="t-info">  </span><span class="t-modify">[ Modify ]</span><span class="t-info">  </span><span class="t-reject">[ Reject ]</span></span>
+        <span class="t-line" id="tl6"><span class="t-divider">---------------------------------------------</span></span>
+        <span class="t-line" id="tl7"><span class="t-success">main.py saved. 46 lines removed.</span></span>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="reveal">
+      <p class="section-label">// features</p>
+      <h2 class="section-h2">Built for engineers who<br />read before they merge</h2>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card reveal">
+        <span class="feature-icon">grep</span>
+        <div class="feature-title">Smart file discovery</div>
+        <p class="feature-desc">Scans only your source files and skips venv, node_modules, and build artifacts every time.</p>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">diff</span>
+        <div class="feature-title">Inline diff viewer</div>
+        <p class="feature-desc">Colored line-by-line diffs with line numbers. Accept, modify, or reject per file.</p>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">&&</span>
+        <div class="feature-title">Parallel execution</div>
+        <p class="feature-desc">All diffs generated simultaneously. Multi-file refactors run fast instead of blocking.</p>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">plan</span>
+        <div class="feature-title">Complexity-aware planning</div>
+        <p class="feature-desc">Simple tasks run instantly. Complex refactors get an ordered execution plan you approve first.</p>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">ctx</span>
+        <div class="feature-title">Full context tracking</div>
+        <p class="feature-desc">Maintains file reads, diffs, and approvals across the entire session without dropping context.</p>
+      </div>
+      <div class="feature-card reveal">
+        <span class="feature-icon">>>_</span>
+        <div class="feature-title">Terminal integration</div>
+        <p class="feature-desc">Runs shell commands inline, streams output, and shows exit codes with full visibility.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="workflow">
+    <div class="reveal">
+      <p class="section-label">// workflow</p>
+      <h2 class="section-h2">Zero surprises. Every time.</h2>
+      <p class="section-sub">A strict human-in-the-loop pipeline. The agent proposes, you decide.</p>
+    </div>
+    <div class="flow-wrap reveal">
+      <div class="flow-steps">
+        <div class="flow-step">
+          <div class="flow-step-inner">
+            <span class="flow-num">01</span>
+            <span class="flow-label">You type<br />a task</span>
+          </div>
         </div>
-
-        <div class="compare-wrap">
-          <table class="compare-table">
-            <thead>
-              <tr><th>NIM Coder ✅</th><th>Other tools ❌</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>Reads only source files</td><td>Reads venv and node_modules</td></tr>
-              <tr><td>Shows diff before writing</td><td>Edits silently</td></tr>
-              <tr><td>Waits for your accept</td><td>Auto-applies changes</td></tr>
-              <tr><td>Parallel diff generation</td><td>Sequential, blocking</td></tr>
-              <tr><td>Sticky status bar</td><td>Status disappears mid-scroll</td></tr>
-            </tbody>
-          </table>
+        <div class="flow-arrow">-></div>
+        <div class="flow-step">
+          <div class="flow-step-inner">
+            <span class="flow-num">02</span>
+            <span class="flow-label">Agent reads<br />your files</span>
+          </div>
+        </div>
+        <div class="flow-arrow">-></div>
+        <div class="flow-step">
+          <div class="flow-step-inner">
+            <span class="flow-num">03</span>
+            <span class="flow-label">Diff is<br />generated</span>
+          </div>
+        </div>
+        <div class="flow-arrow">-></div>
+        <div class="flow-step active">
+          <div class="flow-step-inner">
+            <span class="flow-num">04</span>
+            <span class="flow-label">You review<br />and accept</span>
+          </div>
+        </div>
+        <div class="flow-arrow">-></div>
+        <div class="flow-step">
+          <div class="flow-step-inner">
+            <span class="flow-num">05</span>
+            <span class="flow-label">Changes<br />applied</span>
+          </div>
         </div>
       </div>
-    </section>
+    </div>
 
-    <section class="section install reveal" id="install">
-      <div class="container center">
-        <p class="section-kicker">// get started</p>
-        <h2>Ship faster. Review everything.</h2>
+    <div class="reveal">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th class="good">NIM Coder</th>
+            <th class="bad">Other tools</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="good">Reads only source files</td><td class="bad">Reads venv and node_modules</td></tr>
+          <tr><td class="good">Shows diff before writing</td><td class="bad">Edits silently</td></tr>
+          <tr><td class="good">Waits for your accept</td><td class="bad">Auto-applies changes</td></tr>
+          <tr><td class="good">Parallel diff generation</td><td class="bad">Sequential, blocking</td></tr>
+          <tr><td class="good">Sticky status bar</td><td class="bad">Status disappears mid-scroll</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
 
-        <div class="install-terminal">
-          <pre id="installCmd">git clone https://github.com/talha307841/free-coding-agent
-cd nim-coder && npm install && npm run build</pre>
-          <button id="copyInstall" type="button">Copy</button>
-        </div>
+  <section id="install">
+    <div class="reveal">
+      <p class="section-label">// get started</p>
+      <h2 class="section-h2">Ship faster.<br />Review everything.</h2>
+      <p class="section-sub">Drop it into your VS Code workflow in under two minutes.</p>
+    </div>
+    <div class="code-block reveal">
+      <button class="copy-btn" id="copyInstall" aria-label="Copy install command">copy</button>
+      <code id="installCmd">
+        <span class="cmd">git clone</span> https://github.com/talha307841/free-coding-agent<br />
+        <span class="cmd">cd</span> nim-coder <span class="cmd">&& npm install && npm run build</span>
+      </code>
+    </div>
+    <div class="hero-btns reveal">
+      <a href="https://github.com/talha307841/free-coding-agent#installation" class="btn-primary">Install Extension</a>
+      <a href="https://github.com/talha307841/free-coding-agent" class="btn-secondary">View on GitHub</a>
+    </div>
+    <p class="install-compat reveal" style="margin-top: 28px;">Works with VS Code 1.85+ - TypeScript - Python - Rust - Go - any language</p>
+  </section>
 
-        <div class="hero-actions">
-          <a class="btn btn-primary" href="https://github.com/talha307841/free-coding-agent#installation" target="_blank" rel="noreferrer">⬇ Install Extension</a>
-          <a class="btn btn-ghost" href="https://github.com/talha307841/free-coding-agent" target="_blank" rel="noreferrer">★ View on GitHub</a>
-        </div>
-        <p class="stack">Works with VS Code 1.85+ · TypeScript · Python · Rust · Go · any language</p>
-      </div>
-    </section>
-  </main>
-
-  <footer class="site-footer">
-    <div class="container footer-grid">
+  <footer>
+    <div class="footer-inner">
       <div>
-        <p class="brand">NIM <span>Coder</span><span class="cursor">_</span></p>
-        <p>AI coding agent that asks before it acts.</p>
+        <div class="footer-brand">NIM <span>Coder</span><span style="animation: blink 1.1s step-end infinite; color: var(--green);">_</span></div>
+        <p class="footer-tagline">AI coding agent that asks before it acts.</p>
       </div>
-      <nav aria-label="Footer links">
-        <a href="https://github.com/talha307841/free-coding-agent#readme" target="_blank" rel="noreferrer">Docs</a>
-        <a href="https://github.com/talha307841/free-coding-agent" target="_blank" rel="noreferrer">GitHub</a>
-        <a href="https://github.com/talha307841/free-coding-agent/issues" target="_blank" rel="noreferrer">Issues</a>
-        <a href="https://github.com/talha307841/free-coding-agent/blob/dev/CHANGELOG.md" target="_blank" rel="noreferrer">Changelog</a>
-      </nav>
-      <p>MIT License · Built by Talha</p>
+      <div class="footer-links">
+        <a href="https://github.com/talha307841/free-coding-agent#readme">Docs</a>
+        <a href="https://github.com/talha307841/free-coding-agent">GitHub</a>
+        <a href="https://github.com/talha307841/free-coding-agent/issues">Issues</a>
+        <a href="https://github.com/talha307841/free-coding-agent/blob/dev/CHANGELOG.md">Changelog</a>
+      </div>
+      <div class="footer-right">
+        MIT License<br />Built by Talha
+      </div>
     </div>
   </footer>
 

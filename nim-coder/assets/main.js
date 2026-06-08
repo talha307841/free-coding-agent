@@ -1,260 +1,222 @@
-const nav = document.querySelector('.nav');
-const navToggle = document.querySelector('.nav-toggle');
-const terminalEl = document.getElementById('terminalOutput');
-const typewriterHost = document.getElementById('typewriterTerminal');
-const copyBtn = document.getElementById('copyInstall');
+const cursor = document.getElementById('cursor');
+const cursorDot = document.getElementById('cursorDot');
+const navLinks = document.getElementById('navLinks');
+const hamburger = document.getElementById('hamburger');
+const navbar = document.getElementById('navbar');
+const copyInstallBtn = document.getElementById('copyInstall');
 const installCmd = document.getElementById('installCmd');
 
-window.addEventListener('DOMContentLoaded', () => {
-  document.body.classList.add('loaded');
-  initCodeRain();
-  initReveal();
-  initTypewriter();
-});
+initCustomCursor();
+initCodeRain();
+initReveal();
+initTerminal();
+initCopyInstall();
+initNav();
 
-if (navToggle && nav) {
-  navToggle.addEventListener('click', () => {
-    const isOpen = nav.classList.toggle('open');
-    navToggle.setAttribute('aria-expanded', String(isOpen));
-  });
-}
-
-if (copyBtn && installCmd) {
-  copyBtn.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(installCmd.textContent || '');
-      copyBtn.textContent = 'Copied';
-      setTimeout(() => {
-        copyBtn.textContent = 'Copy';
-      }, 1400);
-    } catch {
-      copyBtn.textContent = 'Failed';
-      setTimeout(() => {
-        copyBtn.textContent = 'Copy';
-      }, 1400);
-    }
-  });
-}
-
-function initReveal() {
-  const revealNodes = document.querySelectorAll('.reveal');
-  const obs = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('is-visible');
-      }
-    });
-  }, { threshold: 0.15 });
-
-  revealNodes.forEach((node) => obs.observe(node));
-}
-
-function initTypewriter() {
-  if (!typewriterHost || !terminalEl) {
+function initCustomCursor() {
+  if (!cursor || !cursorDot || window.matchMedia('(max-width: 640px)').matches) {
     return;
   }
 
-  const lines = [
-    '$ nim-coder: "remove the scraping bee backend from main.py"',
-    '',
-    '📄 Read: main.py (lines 337–420) — ScrapingBeeBackend found',
-    '✍️  Proposing: −46 lines removed · +0 added',
-    '─────────────────────────────────────',
-    '[ ✅ Accept Changes ]  [ ✏️ Modify ]  [ ❌ Reject ]',
-    '─────────────────────────────────────',
-    '✅ main.py saved. 46 lines removed.'
-  ];
+  let mouseX = 0;
+  let mouseY = 0;
+  let cursorX = 0;
+  let cursorY = 0;
 
-  let typingTimer = null;
-  let active = false;
+  document.addEventListener('mousemove', (event) => {
+    mouseX = event.clientX;
+    mouseY = event.clientY;
+    cursorDot.style.left = `${mouseX - 2}px`;
+    cursorDot.style.top = `${mouseY - 2}px`;
+  });
 
-  const startTyping = () => {
-    if (active) {
-      return;
-    }
-    active = true;
-    terminalEl.textContent = '';
-
-    let i = 0;
-    let j = 0;
-
-    const tick = () => {
-      if (!active) {
-        return;
-      }
-
-      if (i >= lines.length) {
-        return;
-      }
-
-      const line = lines[i];
-      terminalEl.textContent += line.charAt(j);
-      j += 1;
-
-      if (j > line.length) {
-        terminalEl.textContent += '\n';
-        i += 1;
-        j = 0;
-      }
-
-      typingTimer = window.setTimeout(tick, 30);
-    };
-
-    tick();
+  const animate = () => {
+    cursorX += (mouseX - cursorX) * 0.18;
+    cursorY += (mouseY - cursorY) * 0.18;
+    cursor.style.left = `${cursorX - 7}px`;
+    cursor.style.top = `${cursorY - 7}px`;
+    window.requestAnimationFrame(animate);
   };
 
-  const resetTyping = () => {
-    active = false;
-    if (typingTimer) {
-      window.clearTimeout(typingTimer);
-      typingTimer = null;
-    }
-    terminalEl.textContent = '';
-  };
+  animate();
 
-  const obs = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      if (entry.isIntersecting) {
-        resetTyping();
-        startTyping();
-      } else {
-        resetTyping();
-      }
+  const targets = document.querySelectorAll('a, button, .feature-card, .demo-card');
+  targets.forEach((el) => {
+    el.addEventListener('mouseenter', () => {
+      cursor.style.transform = 'scale(2.2)';
+      cursor.style.borderColor = 'var(--green5)';
     });
-  }, { threshold: 0.25 });
-
-  obs.observe(typewriterHost);
+    el.addEventListener('mouseleave', () => {
+      cursor.style.transform = 'scale(1)';
+      cursor.style.borderColor = 'var(--green)';
+    });
+  });
 }
 
 function initCodeRain() {
-  const canvas = document.getElementById('codeRain');
+  const canvas = document.getElementById('rain-canvas');
   if (!canvas) {
     return;
   }
 
-  const ctx = canvas.getContext('2d', { alpha: false });
+  const ctx = canvas.getContext('2d');
   if (!ctx) {
     return;
   }
 
-  const tokens = [
-    'async', 'await', 'const', 'let', 'return', 'diff', 'patch', 'grep', 'struct', 'enum',
-    'fn', 'impl', 'class', 'null', 'true', 'false', '===', '=>', '{}', '[]', '()', '@@',
-    '-46', '+12', '+128', 'git', 'merge', 'plan', 'ship', 'ctx', 'npm', 'ts', 'py'
+  const chars = [
+    'async', 'await', 'const', 'diff', 'grep', 'patch', 'fn', 'impl', 'struct', 'null',
+    'true', 'false', '0x1f', '+++', '---', '@@', 'return', 'yield', 'npm', 'git', 'ctx',
+    'plan', 'ship', 'merge', '+128', '-46', '[]', '{}', '=>', 'class'
   ];
-  const colors = [
-    { color: '#00ff6a', weight: 0.3 },
-    { color: '#00cc55', weight: 0.5 },
-    { color: '#00aa44', weight: 0.2 }
-  ];
-
-  const fontSize = 14;
-  const rowHeight = 18;
-  const columnGap = 34;
-  let width = 0;
-  let height = 0;
+  const palette = ['#00ff6a', '#00cc55', '#00aa44'];
   let drops = [];
-  let dpr = 1;
 
-  const pickColor = () => {
-    const r = Math.random();
-    if (r < colors[0].weight) {
-      return colors[0].color;
+  const init = () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    drops = [];
+    const cols = Math.floor(canvas.width / 16);
+
+    for (let i = 0; i < cols; i += 1) {
+      drops.push({
+        x: i * 16,
+        y: Math.random() * -canvas.height,
+        speed: 0.55 + Math.random() * 1.25,
+        opacity: 0.2 + Math.random() * 0.55,
+        char: chars[(Math.random() * chars.length) | 0],
+        trail: 2 + ((Math.random() * 3) | 0)
+      });
     }
-    if (r < colors[0].weight + colors[1].weight) {
-      return colors[1].color;
-    }
-    return colors[2].color;
   };
 
-  const resetDrop = (index, cols, initial) => {
-    drops[index] = {
-      x: index,
-      y: initial ? Math.random() * (-height / rowHeight) : -Math.random() * 24,
-      speed: 0.06 + Math.random() * 0.08,
-      token: tokens[(Math.random() * tokens.length) | 0],
-      color: pickColor(),
-      trail: 2 + ((Math.random() * 3) | 0)
-    };
-  };
+  const draw = () => {
+    ctx.fillStyle = 'rgba(7, 13, 9, 0.08)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.font = '11px JetBrains Mono, monospace';
 
-  const resize = () => {
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
-    width = canvas.clientWidth;
-    height = canvas.clientHeight;
-    canvas.width = Math.floor(width * dpr);
-    canvas.height = Math.floor(height * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    const columns = Math.max(14, Math.floor(width / columnGap));
-    drops = new Array(columns);
-    for (let i = 0; i < columns; i += 1) {
-      resetDrop(i, columns, true);
-    }
-
-    ctx.fillStyle = '#0a0e0c';
-    ctx.fillRect(0, 0, width, height);
-  };
-
-  let rafId = 0;
-  const frame = () => {
-    ctx.fillStyle = 'rgba(10, 14, 12, 0.08)';
-    ctx.fillRect(0, 0, width, height);
-
-    ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
-    ctx.textBaseline = 'top';
-
-    for (let i = 0; i < drops.length; i += 1) {
-      const d = drops[i];
-      d.y += d.speed;
-
-      if (Math.random() > 0.986) {
-        d.token = tokens[(Math.random() * tokens.length) | 0];
-        d.color = pickColor();
-      }
-
-      const yPx = d.y * rowHeight;
-      const xPx = d.x * columnGap + 6;
-      const alpha = Math.max(0.2, Math.min(0.9, 1 - Math.abs((yPx - height * 0.55) / (height * 0.9))));
-
-      for (let t = 0; t < d.trail; t += 1) {
-        const trailY = yPx - t * rowHeight * 0.9;
-        if (trailY < -24) {
+    drops.forEach((drop, index) => {
+      for (let t = 0; t < drop.trail; t += 1) {
+        const y = drop.y - t * 14;
+        if (y < -20) {
           continue;
         }
-
-        const trailAlpha = alpha * (1 - t / (d.trail + 1));
-        const trailToken = t === 0
-          ? d.token
-          : tokens[(i + t + ((d.y * 17) | 0)) % tokens.length];
-        ctx.fillStyle = withAlpha(d.color, Math.max(0.08, trailAlpha));
-        ctx.fillText(trailToken, xPx, trailY);
+        const alpha = Math.max(0.08, drop.opacity * (1 - t / (drop.trail + 1)));
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = palette[(index + t) % palette.length];
+        const token = t === 0 ? drop.char : chars[(index + t + ((drop.y * 13) | 0)) % chars.length];
+        ctx.fillText(token, drop.x, y);
       }
 
-      if (yPx > height + 24) {
-        resetDrop(i, drops.length, false);
+      drop.y += drop.speed;
+      if (Math.random() < 0.02) {
+        drop.char = chars[(Math.random() * chars.length) | 0];
       }
-    }
 
-    rafId = window.requestAnimationFrame(frame);
+      if (drop.y > canvas.height + 40) {
+        drop.y = Math.random() * -260;
+        drop.opacity = 0.2 + Math.random() * 0.55;
+      }
+    });
+
+    ctx.globalAlpha = 1;
+    window.requestAnimationFrame(draw);
   };
 
-  const withAlpha = (hex, alpha) => {
-    const clean = hex.replace('#', '');
-    const bigint = parseInt(clean, 16);
-    const r = (bigint >> 16) & 255;
-    const g = (bigint >> 8) & 255;
-    const b = bigint & 255;
-    return `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`;
+  window.addEventListener('resize', init, { passive: true });
+  init();
+  draw();
+}
+
+function initReveal() {
+  const reveals = document.querySelectorAll('.reveal');
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        observer.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.12 });
+
+  reveals.forEach((node) => observer.observe(node));
+}
+
+function initTerminal() {
+  const lines = Array.from({ length: 8 }, (_, i) => document.getElementById(`tl${i}`));
+  const terminalDemo = document.getElementById('terminal-demo');
+  if (!terminalDemo || !lines.length) {
+    return;
+  }
+
+  let played = false;
+
+  const play = () => {
+    if (played) {
+      return;
+    }
+    played = true;
+
+    let delay = 200;
+    lines.forEach((line, i) => {
+      window.setTimeout(() => {
+        if (line) {
+          line.style.opacity = '1';
+        }
+      }, delay);
+      delay += i === 0 ? 420 : i === 4 || i === 6 ? 120 : 280;
+    });
   };
 
-  resize();
-  frame();
-
-  window.addEventListener('resize', resize, { passive: true });
-  window.addEventListener('beforeunload', () => {
-    if (rafId) {
-      window.cancelAnimationFrame(rafId);
+  const observer = new IntersectionObserver((entries) => {
+    if (entries[0] && entries[0].isIntersecting) {
+      play();
     }
+  }, { threshold: 0.4 });
+
+  observer.observe(terminalDemo);
+}
+
+function initCopyInstall() {
+  if (!copyInstallBtn || !installCmd) {
+    return;
+  }
+
+  copyInstallBtn.addEventListener('click', async () => {
+    const command = 'git clone https://github.com/talha307841/free-coding-agent\ncd nim-coder && npm install && npm run build';
+
+    try {
+      await navigator.clipboard.writeText(command);
+      copyInstallBtn.textContent = 'copied!';
+      copyInstallBtn.classList.add('copied');
+    } catch {
+      copyInstallBtn.textContent = 'failed';
+    }
+
+    window.setTimeout(() => {
+      copyInstallBtn.textContent = 'copy';
+      copyInstallBtn.classList.remove('copied');
+    }, 2000);
   });
+}
+
+function initNav() {
+  if (hamburger && navLinks) {
+    hamburger.addEventListener('click', () => {
+      navLinks.classList.toggle('open');
+    });
+
+    hamburger.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        navLinks.classList.toggle('open');
+      }
+    });
+  }
+
+  if (navbar) {
+    window.addEventListener('scroll', () => {
+      navbar.style.background = window.scrollY > 60 ? 'rgba(7, 13, 9, 0.97)' : 'rgba(7, 13, 9, 0.88)';
+    }, { passive: true });
+  }
 }
