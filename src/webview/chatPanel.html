@@ -1,343 +1,1589 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="{{CSP}}" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NIM Coder Chat</title>
-  <link nonce="{{NONCE}}" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/styles/github-dark.min.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="{{CSP}}">
+  <title>NIM Coder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/github-dark.min.css">
   <style>
     :root {
-      --bg: var(--vscode-editor-background);
-      --fg: var(--vscode-editor-foreground);
-      --border: var(--vscode-editorWidget-border);
-      --input-bg: var(--vscode-input-background);
-      --input-fg: var(--vscode-input-foreground);
-      --button-bg: var(--vscode-button-background);
-      --button-fg: var(--vscode-button-foreground);
-      --muted: var(--vscode-descriptionForeground);
-      --accent: #34d399;
+      --bg: #0a0f14;
+      --bg-grad: radial-gradient(1200px 520px at 85% -200px, rgba(0, 255, 148, 0.16), transparent 60%), radial-gradient(800px 520px at -150px -180px, rgba(51, 194, 255, 0.12), transparent 58%);
+      --panel: #121922;
+      --panel-2: #151f2a;
+      --panel-3: #1a2734;
+      --border: #263748;
+      --text: #edf4ff;
+      --muted: #9eb2c8;
+      --accent: #00ff94;
+      --accent-soft: rgba(0, 255, 148, 0.14);
+      --danger-soft: rgba(255, 92, 92, 0.16);
+      --danger: #ff7070;
+      --success-soft: rgba(62, 220, 126, 0.14);
+      --success: #39d26f;
+      --warn: #f8c154;
+      --line-add: rgba(57, 210, 111, 0.16);
+      --line-del: rgba(255, 112, 112, 0.16);
+      --line-ctx: rgba(255, 255, 255, 0.02);
+      --radius: 12px;
+      --font-ui: 'Space Grotesk', 'Segoe UI', sans-serif;
+      --font-code: 'JetBrains Mono', monospace;
     }
+
     * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
     body {
-      margin: 0;
-      font-family: var(--vscode-font-family);
-      background: radial-gradient(circle at 20% 0%, rgba(52, 211, 153, 0.15), transparent 35%), var(--bg);
-      color: var(--fg);
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-      height: 100vh;
+      background: var(--bg);
+      background-image: var(--bg-grad);
+      color: var(--text);
+      font-family: var(--font-ui);
+      overflow: hidden;
     }
-    .toolbar {
+
+    .shell {
+      height: 100%;
       display: grid;
-      grid-template-columns: 1fr auto auto;
-      gap: 8px;
-      padding: 10px;
-      border-bottom: 1px solid var(--border);
+      grid-template-columns: minmax(0, 1fr) 260px;
+      grid-template-rows: 52px minmax(0, 1fr) auto auto;
+      grid-template-areas:
+        "head side"
+        "chat side"
+        "enhance side"
+        "input side";
+    }
+
+    .header {
+      grid-area: head;
+      display: flex;
       align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(10, 15, 20, 0.7);
+      backdrop-filter: blur(8px);
+      min-width: 0;
     }
-    .toolbar select, .toolbar button {
-      background: var(--input-bg);
-      color: var(--input-fg);
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+
+    .brand .bolt {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      background: linear-gradient(140deg, #00ff94, #40ffd8);
+      box-shadow: 0 0 12px rgba(0, 255, 148, 0.55);
+      transform: skewX(-10deg);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .context-indicator {
+      font-size: 11px;
+      color: var(--muted);
       border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 6px 8px;
+      border-radius: 999px;
+      padding: 5px 10px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 220px;
     }
+
+    .context-indicator.warn {
+      border-color: rgba(248, 193, 84, 0.42);
+      color: #ffd886;
+      background: rgba(248, 193, 84, 0.12);
+    }
+
+    .tiny-btn, select {
+      height: 30px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--muted);
+      font-family: var(--font-ui);
+      font-size: 12px;
+      padding: 0 10px;
+    }
+
     .chat {
-      overflow-y: auto;
-      padding: 14px;
+      grid-area: chat;
+      overflow: auto;
+      padding: 12px;
       display: flex;
       flex-direction: column;
       gap: 10px;
+      min-height: 0;
     }
-    .bubble {
-      padding: 10px 12px;
-      border-radius: 10px;
+
+    .empty-state {
+      margin: auto;
+      text-align: center;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .empty-state strong {
+      display: block;
+      color: var(--text);
+      font-size: 18px;
+      margin-bottom: 4px;
+    }
+
+    .message {
+      max-width: 90%;
+      border-radius: var(--radius);
       border: 1px solid var(--border);
-      white-space: pre-wrap;
-      line-height: 1.4;
+      padding: 11px 12px;
+      position: relative;
+      transition: border-color 120ms ease;
     }
-    .bubble.user {
-      background: color-mix(in oklab, var(--vscode-button-background), black 70%);
+
+    .message .time {
+      opacity: 0;
+      position: absolute;
+      top: -18px;
+      font-size: 10px;
+      color: var(--muted);
+      transition: opacity 120ms ease;
+      pointer-events: none;
+    }
+
+    .message:hover .time { opacity: 1; }
+
+    .user {
       align-self: flex-end;
-      max-width: 85%;
+      background: linear-gradient(145deg, rgba(0, 255, 148, 0.25), rgba(0, 196, 255, 0.16));
+      border-color: rgba(0, 255, 148, 0.36);
+      border-radius: 13px 13px 3px 13px;
     }
-    .bubble.assistant {
-      background: color-mix(in oklab, var(--vscode-editor-background), var(--accent) 8%);
+
+    .user .time { right: 6px; }
+
+    .assistant {
       align-self: flex-start;
-      max-width: 92%;
+      background: var(--panel);
+      border-radius: 3px 13px 13px 13px;
+      box-shadow: inset 3px 0 0 rgba(0, 255, 148, 0.35);
     }
-    .inputWrap {
-      border-top: 1px solid var(--border);
-      padding: 10px;
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 8px;
-    }
-    textarea {
-      width: 100%;
-      min-height: 90px;
-      resize: vertical;
-      background: var(--input-bg);
-      color: var(--input-fg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px;
-      font-family: var(--vscode-editor-font-family, monospace);
+
+    .assistant .time { left: 6px; }
+
+    .msg-content {
+      line-height: 1.5;
+      overflow-wrap: anywhere;
       font-size: 13px;
     }
-    .actions {
+
+    .msg-content p { margin: 0 0 8px; }
+    .msg-content p:last-child { margin-bottom: 0; }
+
+    .status-line {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-style: italic;
+      border: none;
+      background: transparent;
+      padding: 0;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: statusPulse 1.2s infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes statusPulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.2; }
+    }
+
+    pre {
+      margin: 0;
+      border-radius: 10px;
+      border: 1px solid #2d3d4f;
+      background: #0e151e;
+      padding: 10px;
+      overflow: auto;
+      position: relative;
+    }
+
+    pre code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre;
+      display: block;
+      min-width: max-content;
+    }
+
+    .code-copy {
+      position: absolute;
+      right: 8px;
+      top: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      border-radius: 6px;
+      font-size: 11px;
+      padding: 4px 6px;
+      cursor: pointer;
+    }
+
+    .card {
+      border-radius: 11px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      padding: 10px;
+      align-self: stretch;
+    }
+
+    .read-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .read-summary {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .read-actions {
+      margin-top: 8px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .read-expanded {
+      margin-top: 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #101925;
+      overflow: hidden;
+      max-height: 0;
+      opacity: 0;
+      transition: max-height 220ms ease, opacity 220ms ease;
+    }
+
+    .read-expanded.open {
+      max-height: 360px;
+      opacity: 1;
+    }
+
+    .plan-steps {
+      margin: 8px 0 0;
+      padding-left: 18px;
+      font-size: 12px;
+    }
+
+    .plan-steps.collapsed {
+      display: none;
+    }
+
+    .read-code-wrap {
+      max-height: 340px;
+      overflow: auto;
+      font-family: var(--font-code);
+      font-size: 12px;
+    }
+
+    .code-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .code-table td {
+      vertical-align: top;
+      border-top: 1px solid rgba(255, 255, 255, 0.04);
+      padding: 0;
+    }
+
+    .code-table tr:first-child td { border-top: none; }
+
+    .line-no {
+      width: 56px;
+      text-align: right;
+      color: #7f97ad;
+      padding: 3px 8px;
+      user-select: none;
+      background: rgba(255,255,255,0.03);
+      border-right: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .line-code {
+      padding: 0;
+    }
+
+    .line-code pre {
+      margin: 0;
+      border: none;
+      border-radius: 0;
+      background: transparent;
+      padding: 3px 10px;
+      overflow: visible;
+    }
+
+    .diff-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    .diff-view {
+      max-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #0f1722;
+      font-family: var(--font-code);
+      font-size: 12px;
+    }
+
+    .diff-row {
+      display: grid;
+      grid-template-columns: 48px 48px 20px minmax(0, 1fr);
+      gap: 0;
+      align-items: center;
+      border-top: 1px solid rgba(255,255,255,0.03);
+      min-height: 22px;
+    }
+
+    .diff-row:first-child { border-top: none; }
+    .diff-row.ctx { background: var(--line-ctx); }
+    .diff-row.add { background: var(--line-add); }
+    .diff-row.del { background: var(--line-del); }
+    .diff-row.skip { background: rgba(255, 255, 255, 0.03); }
+
+    .diff-cell {
+      padding: 2px 6px;
+      white-space: pre;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .ln { color: #7f97ad; text-align: right; }
+    .op { text-align: center; color: #90a6bd; }
+    .text { overflow-x: auto; }
+
+    .diff-actions {
+      margin-top: 9px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .btn {
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel-3);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+
+    .btn.primary { background: var(--accent-soft); border-color: rgba(0, 255, 148, 0.45); color: #a9ffd8; }
+    .btn.warn { background: rgba(248, 193, 84, 0.14); border-color: rgba(248, 193, 84, 0.45); color: #ffd886; }
+    .btn.danger { background: rgba(255, 112, 112, 0.12); border-color: rgba(255, 112, 112, 0.45); color: #ffb0b0; }
+
+    .inline-input {
+      width: 100%;
+      margin-top: 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #0f1722;
+      color: var(--text);
+      padding: 8px;
+      font-family: var(--font-ui);
+      font-size: 12px;
+      resize: vertical;
+      min-height: 64px;
+    }
+
+    .terminal-head {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: #bcf8dd;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .terminal-lines {
+      font-family: var(--font-code);
+      font-size: 12px;
+      white-space: pre-wrap;
+      max-height: 220px;
+      overflow: auto;
+      background: #0f1722;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      line-height: 1.45;
+    }
+
+    .verify-code { margin-top: 8px; color: var(--muted); font-size: 12px; }
+    .verify-code.ok { color: #a9ffd8; }
+    .verify-code.fail { color: #ffb0b0; }
+
+    .side {
+      grid-area: side;
+      border-left: 1px solid var(--border);
+      background: rgba(15, 23, 35, 0.72);
+      backdrop-filter: blur(6px);
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .side-head {
+      padding: 12px 10px 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .file-list {
+      overflow: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 0;
+      flex: 1;
+    }
+
+    .ctx-file {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      background: rgba(255,255,255,0.01);
+    }
+
+    .ctx-file:hover { border-color: rgba(255,255,255,0.2); }
+
+    .ctx-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      color: var(--text);
+    }
+
+    .dot-pending {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--warn);
+      box-shadow: 0 0 8px rgba(248, 193, 84, 0.7);
+      flex-shrink: 0;
+    }
+
+    .ctx-meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
+    }
+
+    .preview {
+      border-top: 1px solid rgba(255,255,255,0.05);
+      padding: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      min-height: 62px;
+    }
+
+    .enhance-wrap {
+      grid-area: enhance;
+      border-top: 1px solid var(--border);
+      padding: 8px 12px 6px;
+      background: rgba(12, 18, 27, 0.95);
+      display: flex;
       align-items: center;
-      justify-content: space-between;
     }
-    .leftActions, .rightActions { display: flex; gap: 8px; }
-    button.primary {
-      background: var(--button-bg);
-      color: var(--button-fg);
-      border: none;
-      border-radius: 8px;
-      padding: 8px 12px;
-      cursor: pointer;
-    }
-    button.secondary {
-      background: transparent;
-      color: var(--input-fg);
+
+    .enhance-btn {
+      border-radius: 999px;
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 8px 12px;
-      cursor: pointer;
-    }
-    .tokens {
+      padding: 5px 10px;
+      background: var(--panel-2);
       color: var(--muted);
       font-size: 12px;
-    }
-    .typing::after {
-      content: '▍';
-      display: inline-block;
-      margin-left: 2px;
-      animation: pulse 1s infinite;
-      color: var(--accent);
-    }
-    @keyframes pulse {
-      0% { opacity: 0.2; }
-      50% { opacity: 1; }
-      100% { opacity: 0.2; }
-    }
-    pre {
-      position: relative;
-      padding: 10px;
-      border-radius: 8px;
-      overflow: auto;
-      background: rgba(0, 0, 0, 0.35);
-    }
-    .copyBtn {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      font-size: 11px;
-      padding: 4px 8px;
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      background: var(--input-bg);
-      color: var(--input-fg);
       cursor: pointer;
     }
-    .fileHints {
+
+    .input-wrap {
+      grid-area: input;
+      border-top: 1px solid var(--border);
+      background: rgba(9, 14, 20, 0.95);
+      position: sticky;
+      bottom: 0;
+      padding: 10px 12px 12px;
+    }
+
+    .sticky-status {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 78px;
+      z-index: 100;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: rgba(20, 30, 44, 0.96);
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .sticky-status.hidden {
       display: none;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--input-bg);
-      max-height: 120px;
-      overflow-y: auto;
-      font-size: 12px;
     }
-    .fileHints.visible { display: block; }
-    .hintItem {
-      padding: 6px 8px;
+
+    .sticky-status-main {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text);
+      min-width: 0;
+    }
+
+    .sticky-status-text {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .sticky-status-cancel {
+      border-radius: 8px;
+      border: 1px solid rgba(255, 112, 112, 0.5);
+      background: rgba(255, 112, 112, 0.12);
+      color: #ffb0b0;
+      padding: 5px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .input-row {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto auto;
+      gap: 8px;
+      align-items: end;
+    }
+
+    .attach {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--muted);
+      font-size: 16px;
       cursor: pointer;
     }
-    .hintItem:hover {
-      background: color-mix(in oklab, var(--input-bg), white 8%);
+
+    .chat-input {
+      max-height: 120px;
+      min-height: 34px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 8px 10px;
+      resize: none;
+      font-family: var(--font-ui);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .token {
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+      align-self: center;
+      cursor: help;
+    }
+
+    .send {
+      min-width: 86px;
+      height: 34px;
+      border-radius: 10px;
+      border: 1px solid rgba(0, 255, 148, 0.45);
+      background: linear-gradient(140deg, rgba(0, 255, 148, 0.26), rgba(0, 255, 148, 0.12));
+      color: #c9ffe7;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 150ms ease;
+    }
+
+    .send:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      border-color: var(--border);
+      background: var(--panel-2);
+      color: var(--muted);
+    }
+
+    .tabs {
+      margin-top: 8px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      padding-top: 8px;
+      display: flex;
+      gap: 7px;
+      justify-content: space-between;
+    }
+
+    .tab {
+      flex: 1;
+      min-width: 0;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--muted);
+      padding: 6px 8px;
+      font-size: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 150ms ease;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tab.active {
+      background: rgba(0, 255, 148, 0.17);
+      border-color: rgba(0, 255, 148, 0.54);
+      color: #b9ffdf;
+      font-weight: 700;
+      box-shadow: inset 0 0 0 1px rgba(0, 255, 148, 0.25);
+    }
+
+    @media (max-width: 980px) {
+      .shell {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+          "head"
+          "chat"
+          "enhance"
+          "input";
+      }
+      .side { display: none; }
+      .message { max-width: 96%; }
+      .sticky-status { bottom: 86px; }
     }
   </style>
 </head>
 <body>
-  <div class="toolbar">
-    <strong>NIM Coder</strong>
-    <select id="modelSelect">
-      <option value="qwen/qwen3-coder-480b-a35b-instruct">qwen3-coder-480b</option>
-      <option value="deepseek-ai/deepseek-v4-flash">deepseek-v4-flash</option>
-      <option value="qwen/qwen3-235b-a22b-instruct">qwen3-235b</option>
-      <option value="mistralai/devstral-small">devstral-small</option>
-    </select>
-    <button id="clearBtn" class="secondary">Clear chat</button>
-  </div>
-  <div id="chat" class="chat"></div>
-  <div class="inputWrap">
-    <textarea id="input" placeholder="Ask NIM Coder... Use @workspace or @file path/to/file.ts"></textarea>
-    <div id="fileHints" class="fileHints"></div>
-    <div class="actions">
-      <div class="leftActions">
-        <button id="enhanceBtn" class="secondary">Enhance Prompt</button>
-        <button id="stopBtn" class="secondary">Stop</button>
+  <div class="shell">
+    <header class="header">
+      <div class="brand"><span class="bolt"></span><span>NIM Coder</span></div>
+      <div class="header-right">
+        <div id="context-indicator" class="context-indicator">~0 / 128000 tokens</div>
+        <select id="model-select" data-preferred="{{PREFERRED_MODEL}}">
+          <option value="mistralai/devstral-small">mistralai/devstral-small</option>
+          <option value="deepseek-ai/deepseek-v4-flash">deepseek-ai/deepseek-v4-flash</option>
+          <option value="minimaxai/minimax-m2.7">minimaxai/minimax-m2.7</option>
+          <option value="qwen/qwen3-coder-480b-a35b-instruct">qwen/qwen3-coder-480b-a35b-instruct</option>
+        </select>
+        <button id="clear-btn" class="tiny-btn">New</button>
       </div>
-      <div class="rightActions">
-        <span id="tokens" class="tokens">~0 tokens used this session</span>
-        <button id="sendBtn" class="primary">Send</button>
+    </header>
+
+    <main id="messages" class="chat">
+      <div id="empty-state" class="empty-state">
+        <strong>NIM Coder</strong>
+        <div>Ask me anything about your code.</div>
       </div>
+    </main>
+
+    <aside class="side">
+      <div class="side-head">
+        <span>Files in Context</span>
+        <button id="toggle-side" class="tiny-btn">Hide</button>
+      </div>
+      <div id="context-files" class="file-list"></div>
+      <div id="file-preview" class="preview">Select a file in context to preview actions.</div>
+    </aside>
+
+    <div class="enhance-wrap">
+      <button id="enhance-btn" class="enhance-btn">✨ Enhance prompt</button>
     </div>
+
+    <div id="sticky-status" class="sticky-status hidden" role="status" aria-live="polite">
+      <div class="sticky-status-main">
+        <span class="status-dot"></span>
+        <span id="sticky-status-text" class="sticky-status-text">Working...</span>
+      </div>
+      <button id="sticky-status-cancel" class="sticky-status-cancel">Cancel</button>
+    </div>
+
+    <footer class="input-wrap">
+      <div class="input-row">
+        <button id="attach-btn" class="attach" title="Attach file">📎</button>
+        <textarea id="chat-input" class="chat-input" rows="1" placeholder="Ask NIM Coder..."></textarea>
+        <span id="token-count" class="token" title="Input: ~0 tokens | Context: ~0 tokens | Limit: 128,000">~0 tokens</span>
+        <button id="send-btn" class="send" disabled>➤ Send</button>
+      </div>
+      <div class="tabs">
+        <button class="tab active" data-mode="chat">💬 Chat</button>
+        <button class="tab" data-mode="agent">🤖 Agent</button>
+        <button class="tab" data-mode="plan">🗺️ Plan</button>
+        <button class="tab" data-mode="research">🔎 Research</button>
+        <button class="tab" data-mode="discuss">🗣️ Discuss</button>
+      </div>
+    </footer>
   </div>
 
-  <script nonce="{{NONCE}}" src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/highlight.min.js"></script>
+  <script nonce="{{NONCE}}" src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script nonce="{{NONCE}}" src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
   <script nonce="{{NONCE}}">
     const vscode = acquireVsCodeApi();
-    const chatEl = document.getElementById('chat');
-    const inputEl = document.getElementById('input');
-    const sendBtn = document.getElementById('sendBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const clearBtn = document.getElementById('clearBtn');
-    const enhanceBtn = document.getElementById('enhanceBtn');
-    const modelSelect = document.getElementById('modelSelect');
-    const tokenEl = document.getElementById('tokens');
-    const fileHints = document.getElementById('fileHints');
-    let activeAssistantBubble = null;
 
-    function renderMarkdown(content) {
-      const escaped = content
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+    let activeMode = 'chat';
+    let isGenerating = false;
+    let assistantBubble = null;
+    let assistantText = '';
+    let contextUsedTokens = 0;
+    let contextLimitTokens = 128000;
+    const terminalCards = new Map();
+    const readCardGroups = new Map();
+    let stickyStatusHideTimer = null;
+    let stickyStatusPulseTimer = null;
+    let stickyStatusSnapshot = { phase: 'idle', detail: '', updatedAt: 0 };
 
-      const withCode = escaped.replace(/```([\s\S]*?)```/g, (match, code) => {
-        return `<pre><button class="copyBtn">Copy</button><code>${code}</code></pre>`;
-      });
-      return withCode.replace(/\n/g, '<br/>');
+    function now() {
+      return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
-    function attachCopyButtons() {
-      chatEl.querySelectorAll('.copyBtn').forEach((btn) => {
-        if (btn.dataset.bound) return;
-        btn.dataset.bound = '1';
-        btn.addEventListener('click', () => {
-          const code = btn.parentElement.querySelector('code').innerText;
-          navigator.clipboard.writeText(code);
-          btn.textContent = 'Copied';
-          setTimeout(() => { btn.textContent = 'Copy'; }, 800);
+    function esc(value) {
+      return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+    }
+
+    function renderMarkdown(value) {
+      try {
+        if (window.marked) {
+          return marked.parse(String(value));
+        }
+      } catch {
+        return esc(value).replace(/\n/g, '<br>');
+      }
+      return esc(value).replace(/\n/g, '<br>');
+    }
+
+    function hasContentMessages() {
+      return document.querySelectorAll('#messages > .message, #messages > .card').length > 0;
+    }
+
+    function syncEmptyState() {
+      const empty = document.getElementById('empty-state');
+      if (!empty) return;
+      empty.style.display = hasContentMessages() ? 'none' : 'block';
+    }
+
+    function basename(filePath) {
+      const parts = String(filePath || '').split('/');
+      return parts[parts.length - 1] || filePath;
+    }
+
+    function shouldSkipReadPath(filePath) {
+      const p = String(filePath || '');
+      return /(venv|\.venv|site-packages|node_modules|\.dist-info|__pycache__)/i.test(p);
+    }
+
+    function addMessage(role, content) {
+      const wrap = document.createElement('div');
+      wrap.className = `message ${role}`;
+      wrap.innerHTML = `<span class="time">${now()}</span><div class="msg-content">${role === 'assistant' ? renderMarkdown(content) : esc(content).replace(/\n/g, '<br>')}</div>`;
+      document.getElementById('messages').appendChild(wrap);
+      processCodeBlocks(wrap);
+      syncEmptyState();
+      scrollBottom();
+      return wrap;
+    }
+
+    function addStatusBubble() {
+      assistantBubble = document.createElement('div');
+      assistantBubble.className = 'message assistant';
+      assistantBubble.innerHTML = '<span class="time">' + now() + '</span><div class="status-line" data-status hidden></div><div class="msg-content" data-content></div>';
+      document.getElementById('messages').appendChild(assistantBubble);
+      syncEmptyState();
+      scrollBottom();
+    }
+
+    function setStatus(phase, detail = '') {
+      const mapping = {
+        reading: 'Reading file...',
+        thinking: 'Thinking...',
+        writing: 'Writing changes...',
+        running: 'Running command...',
+        failed: 'Failed'
+      };
+      const label = mapping[phase] || String(phase);
+      const status = document.getElementById('sticky-status');
+      const text = document.getElementById('sticky-status-text');
+      const cancel = document.getElementById('sticky-status-cancel');
+
+      if (stickyStatusHideTimer) {
+        clearTimeout(stickyStatusHideTimer);
+        stickyStatusHideTimer = null;
+      }
+
+      stickyStatusSnapshot = {
+        phase,
+        detail: detail || 'working',
+        updatedAt: Date.now()
+      };
+
+      if (!phase || phase === 'idle') {
+        status.classList.add('hidden');
+        return;
+      }
+
+      if (phase === 'done') {
+        status.classList.remove('hidden');
+        cancel.style.display = 'none';
+        text.textContent = `${detail || 'Task complete'} — done ✅`;
+        stickyStatusHideTimer = setTimeout(() => {
+          status.classList.add('hidden');
+        }, 2000);
+        return;
+      }
+
+      status.classList.remove('hidden');
+      cancel.style.display = 'inline-flex';
+      text.textContent = `${label} — ${detail || 'working'}`;
+
+      if (!stickyStatusPulseTimer) {
+        stickyStatusPulseTimer = setInterval(() => {
+          if (!stickyStatusSnapshot.phase || ['idle', 'done', 'failed'].includes(stickyStatusSnapshot.phase)) {
+            return;
+          }
+          const elapsed = ((Date.now() - stickyStatusSnapshot.updatedAt) / 1000).toFixed(1);
+          const node = document.getElementById('sticky-status-text');
+          node.textContent = `${mapping[stickyStatusSnapshot.phase] || stickyStatusSnapshot.phase} — ${stickyStatusSnapshot.detail} (${elapsed}s)`;
+        }, 500);
+      }
+
+      if (phase === 'failed') {
+        cancel.style.display = 'none';
+      }
+    }
+
+    function clearWorkingState(finalPhase = 'done', detail = '') {
+      setStatus(finalPhase, detail);
+      document.querySelectorAll('[data-status]').forEach((node) => {
+        node.hidden = true;
+        node.innerHTML = '';
+      });
+      assistantBubble = null;
+      setGenerating(false);
+    }
+
+    function processCodeBlocks(scope) {
+      scope.querySelectorAll('pre').forEach((pre) => {
+        if (pre.querySelector('.code-copy')) return;
+        const copy = document.createElement('button');
+        copy.className = 'code-copy';
+        copy.textContent = 'Copy';
+        copy.addEventListener('click', async () => {
+          await navigator.clipboard.writeText(pre.innerText);
+          copy.textContent = 'Copied';
+          setTimeout(() => { copy.textContent = 'Copy'; }, 700);
         });
+        pre.appendChild(copy);
+      });
+    }
+
+    function updateTokenEstimate(text) {
+      const estimate = Math.ceil(String(text || '').length / 4);
+      const tokenEl = document.getElementById('token-count');
+      tokenEl.textContent = `~${estimate} tokens | ${contextUsedTokens.toLocaleString()}/128k used`;
+      tokenEl.title = `Input: ~${estimate.toLocaleString()} tokens | Context: ~${contextUsedTokens.toLocaleString()} tokens | Limit: ${contextLimitTokens.toLocaleString()}`;
+    }
+
+    function updateContextIndicator(used, max, warn) {
+      contextUsedTokens = used;
+      contextLimitTokens = max;
+      const node = document.getElementById('context-indicator');
+      node.textContent = `~${used.toLocaleString()} / ${max.toLocaleString()} tokens`;
+      node.classList.toggle('warn', Boolean(warn));
+      if (warn) {
+        node.textContent += '  ⚠️ Context getting large';
+      }
+      updateTokenEstimate(document.getElementById('chat-input').value || '');
+    }
+
+    function scrollBottom() {
+      const messages = document.getElementById('messages');
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function buildDiffRows(diff) {
+      const lines = String(diff).split(/\r?\n/);
+      const rows = [];
+      let oldLine = 0;
+      let newLine = 0;
+      for (const line of lines) {
+        if (line.startsWith('@@')) {
+          const match = line.match(/^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/);
+          if (match) {
+            oldLine = Number(match[1]);
+            newLine = Number(match[2]);
+          }
+          continue;
+        }
+        if (line.startsWith('--- ') || line.startsWith('+++ ')) {
+          continue;
+        }
+        if (line.startsWith('+')) {
+          rows.push({ type: 'add', old: '', next: newLine, op: '+', text: line.slice(1) });
+          newLine += 1;
+          continue;
+        }
+        if (line.startsWith('-')) {
+          rows.push({ type: 'del', old: oldLine, next: '', op: '-', text: line.slice(1) });
+          oldLine += 1;
+          continue;
+        }
+        if (line.startsWith(' ')) {
+          rows.push({ type: 'ctx', old: oldLine, next: newLine, op: ' ', text: line.slice(1) });
+          oldLine += 1;
+          newLine += 1;
+        }
+      }
+
+      const changed = rows
+        .map((row, index) => ({ row, index }))
+        .filter((item) => item.row.type !== 'ctx')
+        .map((item) => item.index);
+
+      if (changed.length === 0) {
+        return rows;
+      }
+
+      const keep = new Set();
+      for (const idx of changed) {
+        for (let i = Math.max(0, idx - 3); i <= Math.min(rows.length - 1, idx + 3); i += 1) {
+          keep.add(i);
+        }
+      }
+
+      const compact = [];
+      let runStart = -1;
+      for (let i = 0; i < rows.length; i += 1) {
+        if (keep.has(i)) {
+          if (runStart !== -1) {
+            compact.push({ type: 'skip', count: i - runStart });
+            runStart = -1;
+          }
+          compact.push(rows[i]);
+        } else if (runStart === -1) {
+          runStart = i;
+        }
+      }
+      if (runStart !== -1) {
+        compact.push({ type: 'skip', count: rows.length - runStart });
+      }
+      return compact;
+    }
+
+    function renderDiffCard(payload) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.diffId = payload.diffId;
+      const rows = buildDiffRows(payload.diff);
+
+      card.innerHTML = `
+        <div class="diff-header">
+          <span>✍️ Proposing changes to ${esc(payload.filePath)}</span>
+          <span>− ${Number(payload.stats.removed || 0)} lines removed  + ${Number(payload.stats.added || 0)} lines added</span>
+        </div>
+        <div class="diff-view" data-diff-view></div>
+        <div class="diff-actions">
+          <button class="btn primary" data-accept>✅ Accept Changes</button>
+          <button class="btn warn" data-modify>✏️ Modify</button>
+          <button class="btn danger" data-reject>❌ Reject</button>
+        </div>
+      `;
+
+      const view = card.querySelector('[data-diff-view]');
+      for (const row of rows) {
+        if (row.type === 'skip') {
+          const el = document.createElement('div');
+          el.className = 'diff-row skip';
+          el.innerHTML = `<div class="diff-cell ln"></div><div class="diff-cell ln"></div><div class="diff-cell op">…</div><div class="diff-cell text">${row.count} unchanged lines collapsed</div>`;
+          view.appendChild(el);
+          continue;
+        }
+        const el = document.createElement('div');
+        el.className = `diff-row ${row.type}`;
+        el.innerHTML = `<div class="diff-cell ln">${row.old}</div><div class="diff-cell ln">${row.next}</div><div class="diff-cell op">${row.op}</div><div class="diff-cell text">${esc(row.text)}</div>`;
+        view.appendChild(el);
+      }
+
+      card.querySelector('[data-accept]').addEventListener('click', () => {
+        vscode.postMessage({ type: 'diffDecision', diffId: payload.diffId, action: 'accept' });
+        card.querySelector('.diff-actions').innerHTML = '<span class="verify-code ok">Accepted. Applying patch...</span>';
+      });
+
+      card.querySelector('[data-modify]').addEventListener('click', () => {
+        if (card.querySelector('.inline-input')) return;
+        const box = document.createElement('textarea');
+        box.className = 'inline-input';
+        box.placeholder = 'Describe how the diff should be modified...';
+        const submit = document.createElement('button');
+        submit.className = 'btn warn';
+        submit.textContent = 'Send modification';
+        submit.addEventListener('click', () => {
+          vscode.postMessage({ type: 'diffDecision', diffId: payload.diffId, action: 'modify', prompt: box.value.trim() });
+          submit.disabled = true;
+          submit.textContent = 'Re-running...';
+        });
+        card.appendChild(box);
+        card.appendChild(submit);
+      });
+
+      card.querySelector('[data-reject]').addEventListener('click', () => {
+        vscode.postMessage({ type: 'diffDecision', diffId: payload.diffId, action: 'reject' });
+      });
+
+      document.getElementById('messages').appendChild(card);
+      scrollBottom();
+    }
+
+    function renderReadCard(payload) {
+      const annotation = payload.annotation || {};
+      if (shouldSkipReadPath(annotation.filePath)) {
+        return;
+      }
+
+      const filePath = String(annotation.filePath || 'unknown');
+      const fileName = basename(filePath);
+      const startLine = Number(annotation.startLine || 1);
+      const endLine = Number(annotation.endLine || startLine);
+      const rangeLabel = `${startLine}–${endLine}`;
+      const key = filePath;
+
+      let group = readCardGroups.get(key);
+      if (!group) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div class="read-head" data-toggle>
+            <span data-title></span>
+            <span>↓ expand</span>
+          </div>
+          <div class="read-expanded" data-expanded>
+            <div class="read-code-wrap" data-code-wrap></div>
+            <div class="read-actions" style="padding: 8px"><button class="btn" data-collapse>Collapse</button></div>
+          </div>
+        `;
+
+        const expanded = card.querySelector('[data-expanded]');
+        card.querySelector('[data-toggle]').addEventListener('click', () => {
+          expanded.classList.toggle('open');
+        });
+        card.querySelector('[data-collapse]').addEventListener('click', () => {
+          expanded.classList.remove('open');
+        });
+
+        document.getElementById('messages').appendChild(card);
+        group = {
+          card,
+          title: card.querySelector('[data-title]'),
+          codeWrap: card.querySelector('[data-code-wrap]'),
+          ranges: [],
+          sections: []
+        };
+        readCardGroups.set(key, group);
+      }
+
+      group.ranges.push(rangeLabel);
+      group.sections.push({
+        startLine,
+        endLine,
+        languageTag: annotation.languageTag,
+        content: String(payload.content || '')
+      });
+
+      const uniqueRanges = [...new Set(group.ranges)].join(', ');
+      group.title.textContent = `📄 ${fileName} : ${uniqueRanges}`;
+      group.codeWrap.innerHTML = '';
+
+      group.sections.forEach((section) => {
+        const block = document.createElement('div');
+        block.className = 'read-summary';
+        block.textContent = `${fileName} (${section.startLine}–${section.endLine})`;
+        group.codeWrap.appendChild(block);
+
+        const table = document.createElement('table');
+        table.className = 'code-table';
+        const lines = section.content.split(/\r?\n/);
+        lines.forEach((line, index) => {
+          const tr = document.createElement('tr');
+          const ln = document.createElement('td');
+          ln.className = 'line-no';
+          ln.textContent = String(section.startLine + index);
+          const code = document.createElement('td');
+          code.className = 'line-code';
+          const pre = document.createElement('pre');
+          const codeTag = document.createElement('code');
+          codeTag.textContent = line;
+          if (section.languageTag) {
+            codeTag.className = `language-${section.languageTag}`;
+          }
+          pre.appendChild(codeTag);
+          code.appendChild(pre);
+          tr.appendChild(ln);
+          tr.appendChild(code);
+          table.appendChild(tr);
+        });
+        group.codeWrap.appendChild(table);
       });
 
       if (window.hljs) {
-        chatEl.querySelectorAll('pre code').forEach((block) => window.hljs.highlightElement(block));
+        group.codeWrap.querySelectorAll('code').forEach((block) => window.hljs.highlightElement(block));
       }
+      syncEmptyState();
+      scrollBottom();
     }
 
-    function addBubble(role, content) {
-      const div = document.createElement('div');
-      div.className = `bubble ${role}`;
-      div.innerHTML = renderMarkdown(content);
-      chatEl.appendChild(div);
-      chatEl.scrollTop = chatEl.scrollHeight;
-      attachCopyButtons();
-      return div;
+    function renderPlanCard(steps, revised, complexity, autoApproveSeconds) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `<div class="diff-header"><span data-plan-title>${revised ? '▼ Revised plan' : '▼ Proposed plan'}</span><span>${steps.length} steps</span></div>`;
+      const list = document.createElement('ol');
+      list.className = 'plan-steps';
+      steps.forEach((step) => {
+        const li = document.createElement('li');
+        li.textContent = step;
+        list.appendChild(li);
+      });
+      card.appendChild(list);
+
+      const notes = document.createElement('textarea');
+      notes.className = 'inline-input';
+      notes.placeholder = 'Describe plan changes...';
+      notes.hidden = true;
+      card.appendChild(notes);
+
+      const actions = document.createElement('div');
+      actions.className = 'diff-actions';
+      const includeModify = complexity === 'complex';
+      actions.innerHTML = includeModify
+        ? ['<button class="btn primary" data-approve>Approve</button>', '<button class="btn warn" data-modify>Modify</button>', '<button class="btn danger" data-cancel>Cancel</button>'].join('')
+        : ['<button class="btn primary" data-approve>Approve</button>', '<button class="btn danger" data-cancel>Cancel</button>'].join('');
+      card.appendChild(actions);
+
+      const header = card.querySelector('[data-plan-title]');
+      header.addEventListener('click', () => {
+        const collapsed = list.classList.toggle('collapsed');
+        header.textContent = `${collapsed ? '▶' : '▼'} ${revised ? 'Revised plan' : 'Proposed plan'}`;
+      });
+
+      actions.querySelector('[data-approve]').addEventListener('click', () => {
+        vscode.postMessage({ type: 'planDecision', action: 'approve', approved: true });
+        list.classList.add('collapsed');
+        actions.innerHTML = '<span class="verify-code ok">✅ Plan approved - executing...</span>';
+      });
+
+      const modifyBtn = actions.querySelector('[data-modify]');
+      if (modifyBtn) {
+        modifyBtn.addEventListener('click', () => {
+          if (notes.hidden) {
+            notes.hidden = false;
+            notes.focus();
+            return;
+          }
+          vscode.postMessage({ type: 'planDecision', action: 'modify', approved: false, notes: notes.value.trim() });
+          actions.innerHTML = '<span class="verify-code">Requested plan modifications...</span>';
+        });
+      }
+
+      notes.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+          vscode.postMessage({ type: 'planDecision', action: 'modify', approved: false, notes: notes.value.trim() });
+          actions.innerHTML = '<span class="verify-code">Requested plan modifications...</span>';
+        }
+      });
+
+      actions.querySelector('[data-cancel]').addEventListener('click', () => {
+        vscode.postMessage({ type: 'planDecision', action: 'cancel', approved: false, cancelled: true });
+        actions.innerHTML = '<span class="verify-code fail">Task cancelled.</span>';
+      });
+
+      if (Number(autoApproveSeconds || 0) > 0) {
+        let remaining = Number(autoApproveSeconds);
+        const countdown = document.createElement('div');
+        countdown.className = 'verify-code';
+        countdown.textContent = `Executing in ${remaining}...`;
+        card.appendChild(countdown);
+        const timer = setInterval(() => {
+          remaining -= 1;
+          if (remaining <= 0) {
+            clearInterval(timer);
+            vscode.postMessage({ type: 'planDecision', action: 'approve', approved: true });
+            list.classList.add('collapsed');
+            actions.innerHTML = '<span class="verify-code ok">✅ Plan auto-approved - executing...</span>';
+            countdown.remove();
+            return;
+          }
+          countdown.textContent = `Executing in ${remaining}...`;
+        }, 1000);
+
+        actions.querySelector('[data-cancel]').addEventListener('click', () => {
+          clearInterval(timer);
+        });
+        actions.querySelector('[data-approve]').addEventListener('click', () => {
+          clearInterval(timer);
+          countdown.remove();
+        });
+      }
+
+      document.getElementById('messages').appendChild(card);
+      syncEmptyState();
+      scrollBottom();
     }
 
-    function sendMessage() {
-      const text = inputEl.value.trim();
-      if (!text) return;
-      vscode.postMessage({ type: 'send', text, model: modelSelect.value });
-      inputEl.value = '';
-      fileHints.classList.remove('visible');
+    function renderRejectChoices(diffId, filePath) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `<div class="diff-header"><span>❌ Changes rejected for ${esc(filePath)}</span><span>How should the workflow proceed?</span></div>`;
+      const actions = document.createElement('div');
+      actions.className = 'diff-actions';
+      actions.innerHTML = '<button class="btn">Skip</button><button class="btn warn">Retry</button><button class="btn danger">Abort</button>';
+      const [skip, retry, abort] = actions.querySelectorAll('button');
+      skip.addEventListener('click', () => { vscode.postMessage({ type: 'rejectDecision', diffId, action: 'skip' }); card.remove(); });
+      retry.addEventListener('click', () => { vscode.postMessage({ type: 'rejectDecision', diffId, action: 'retry' }); card.remove(); });
+      abort.addEventListener('click', () => { vscode.postMessage({ type: 'rejectDecision', diffId, action: 'abort' }); card.remove(); });
+      card.appendChild(actions);
+      document.getElementById('messages').appendChild(card);
+      scrollBottom();
     }
 
-    sendBtn.addEventListener('click', sendMessage);
-    stopBtn.addEventListener('click', () => vscode.postMessage({ type: 'stop' }));
-    clearBtn.addEventListener('click', () => vscode.postMessage({ type: 'clear' }));
-    enhanceBtn.addEventListener('click', () => vscode.postMessage({ type: 'enhancePrompt', text: inputEl.value }));
+    function renderTerminalStart(terminalId, command) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.terminalId = terminalId;
+      card.innerHTML = `
+        <div class="terminal-head">
+          <span>$ ${esc(command)}</span>
+          <button class="btn danger" data-stop>⛔ Stop</button>
+        </div>
+        <div class="terminal-lines" data-lines>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+        <div class="verify-code" data-exit>Running...</div>
+      `;
+      card.querySelector('[data-stop]').addEventListener('click', () => {
+        vscode.postMessage({ type: 'stopTerminal', terminalId });
+      });
+      terminalCards.set(terminalId, card);
+      document.getElementById('messages').appendChild(card);
+      scrollBottom();
+    }
 
-    inputEl.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault();
-        sendMessage();
-      }
-    });
+    function renderTerminalChunk(terminalId, line) {
+      const card = terminalCards.get(terminalId);
+      if (!card) return;
+      const lines = card.querySelector('[data-lines]');
+      lines.textContent += `\n${line}`;
+      lines.scrollTop = lines.scrollHeight;
+      scrollBottom();
+    }
 
-    inputEl.addEventListener('input', () => {
-      const value = inputEl.value;
-      const atFileMatch = value.match(/@file\s+([^\s]*)$/);
-      if (atFileMatch) {
-        vscode.postMessage({ type: 'listFiles', query: atFileMatch[1] });
-      } else {
-        fileHints.classList.remove('visible');
-      }
-    });
+    function renderTerminalEnd(terminalId, exitCode) {
+      const card = terminalCards.get(terminalId);
+      if (!card) return;
+      const lines = card.querySelector('[data-lines]');
+      lines.textContent += '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
+      const exit = card.querySelector('[data-exit]');
+      const ok = Number(exitCode) === 0;
+      exit.className = `verify-code ${ok ? 'ok' : 'fail'}`;
+      exit.textContent = `Exit code: ${exitCode} ${ok ? '✅' : '❌'}`;
+      const stop = card.querySelector('[data-stop]');
+      if (stop) stop.remove();
+      terminalCards.delete(terminalId);
+    }
+
+    function renderContextFiles(files) {
+      const list = document.getElementById('context-files');
+      list.innerHTML = '';
+      files.forEach((file) => {
+        const node = document.createElement('div');
+        node.className = 'ctx-file';
+        node.innerHTML = `
+          <div class="ctx-title">
+            <span>📄 ${esc(file.filePath)}</span>
+            ${file.pending ? '<span class="dot-pending"></span>' : ''}
+          </div>
+          <div class="ctx-meta">
+            <span>${file.read ? 'Read ✅' : 'Not read'}</span>
+            <span>${file.modified ? 'Modified ✅' : file.pending ? 'Pending ⏳' : 'Pending'}</span>
+          </div>
+        `;
+        node.addEventListener('click', () => {
+          document.getElementById('file-preview').innerHTML = `
+            <div><b>${esc(file.filePath)}</b></div>
+            <div style="margin-top:6px">Read: ${file.read ? 'yes' : 'no'} | Modified: ${file.modified ? 'yes' : 'no'} | Pending: ${file.pending ? 'yes' : 'no'}</div>
+            <div style="margin-top:8px"><button class="tiny-btn" id="open-preview-file">Open file</button></div>
+          `;
+          document.getElementById('open-preview-file').addEventListener('click', () => {
+            vscode.postMessage({ type: 'openFile', path: file.filePath });
+          });
+        });
+        list.appendChild(node);
+      });
+    }
+
+    function setGenerating(value) {
+      isGenerating = value;
+      const send = document.getElementById('send-btn');
+      const text = document.getElementById('chat-input').value.trim();
+      send.textContent = value ? '■ Stop' : '➤ Send';
+      send.disabled = value ? false : !text;
+    }
+
+    function handleSend() {
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      if (!text || isGenerating) return;
+      addMessage('user', text);
+      setGenerating(true);
+      const model = document.getElementById('model-select').value;
+      vscode.postMessage({ type: 'chat', content: text, mode: activeMode, model });
+      input.value = '';
+      input.style.height = '34px';
+      updateTokenEstimate('');
+      assistantText = '';
+      addStatusBubble();
+      setStatus('thinking', 'planning response');
+    }
 
     window.addEventListener('message', (event) => {
-      const msg = event.data;
-      if (msg.type === 'message') {
-        addBubble(msg.role, msg.content);
-      }
-      if (msg.type === 'streamStart') {
-        activeAssistantBubble = addBubble('assistant', '');
-        activeAssistantBubble.classList.add('typing');
-      }
-      if (msg.type === 'streamToken' && activeAssistantBubble) {
-        const current = activeAssistantBubble.textContent || '';
-        activeAssistantBubble.innerHTML = renderMarkdown(current + msg.token);
-        chatEl.scrollTop = chatEl.scrollHeight;
-        attachCopyButtons();
-      }
-      if (msg.type === 'streamEnd') {
-        if (activeAssistantBubble) {
-          activeAssistantBubble.classList.remove('typing');
-        }
-        activeAssistantBubble = null;
-        if (typeof msg.tokenCount === 'number') {
-          tokenEl.textContent = `~${msg.tokenCount} tokens used this session`;
-        }
-      }
-      if (msg.type === 'streamError') {
-        if (activeAssistantBubble) {
-          activeAssistantBubble.classList.remove('typing');
-        }
-        activeAssistantBubble = null;
-        addBubble('assistant', `Error: ${msg.message}`);
-      }
-      if (msg.type === 'cleared') {
-        chatEl.innerHTML = '';
-        tokenEl.textContent = '~0 tokens used this session';
-      }
-      if (msg.type === 'enhancedPrompt') {
-        inputEl.value = msg.text || '';
-        inputEl.focus();
-      }
-      if (msg.type === 'fileSuggestions') {
-        const files = Array.isArray(msg.files) ? msg.files : [];
-        if (files.length === 0) {
-          fileHints.classList.remove('visible');
-          return;
-        }
-
-        fileHints.innerHTML = '';
-        for (const file of files) {
-          const item = document.createElement('div');
-          item.className = 'hintItem';
-          item.textContent = file;
-          item.addEventListener('click', () => {
-            inputEl.value = inputEl.value.replace(/@file\s+([^\s]*)$/, `@file ${file}`);
-            inputEl.focus();
-            fileHints.classList.remove('visible');
-          });
-          fileHints.appendChild(item);
-        }
-        fileHints.classList.add('visible');
-      }
-      if (msg.type === 'focusInput') {
-        inputEl.focus();
+      const message = event.data || {};
+      switch (message.type) {
+        case 'streamStart':
+          if (!assistantBubble) {
+            addStatusBubble();
+          }
+          setGenerating(true);
+          break;
+        case 'streamToken':
+          assistantText += String(message.token || '');
+          if (!assistantBubble) addStatusBubble();
+          assistantBubble.querySelector('[data-content]').innerHTML = renderMarkdown(assistantText);
+          processCodeBlocks(assistantBubble);
+          scrollBottom();
+          break;
+        case 'streamEnd':
+          clearWorkingState('done');
+          break;
+        case 'setStatus':
+          setStatus(String(message.phase || ''), String(message.detail || ''));
+          if (String(message.phase || '') === 'failed') {
+            clearWorkingState('failed', String(message.detail || 'Failed'));
+          }
+          break;
+        case 'streamError':
+          addMessage('assistant', `❌ ${message.message || 'Generation failed'}`);
+          clearWorkingState('failed', String(message.message || 'Generation failed'));
+          break;
+        case 'cleared':
+          document.getElementById('messages').innerHTML = '';
+          readCardGroups.clear();
+          document.getElementById('messages').innerHTML = '<div id="empty-state" class="empty-state"><strong>NIM Coder</strong><div>Ask me anything about your code.</div></div>';
+          assistantBubble = null;
+          syncEmptyState();
+          break;
+        case 'enhancedPrompt':
+          document.getElementById('chat-input').value = String(message.text || '');
+          updateTokenEstimate(document.getElementById('chat-input').value);
+          break;
+        case 'readCard':
+          renderReadCard(message);
+          break;
+        case 'planCard':
+          renderPlanCard(message.steps || [], Boolean(message.revised), String(message.complexity || 'complex'), Number(message.autoApproveSeconds || 0));
+          break;
+        case 'diffCard':
+          renderDiffCard(message);
+          break;
+        case 'diffApplied':
+          addMessage('assistant', `✅ ${message.filePath} updated — ${message.removed} lines removed, ${message.added} lines added, file saved`);
+          break;
+        case 'diffRejected':
+          renderRejectChoices(message.diffId, message.filePath);
+          break;
+        case 'workflowProgress':
+          addMessage('assistant', String(message.label || 'Workflow step'));
+          break;
+        case 'workflowDone':
+          addMessage('assistant', `✅ ${message.summary}`);
+          clearWorkingState('done', String(message.summary || 'Task complete'));
+          break;
+        case 'terminalStart':
+          renderTerminalStart(message.terminalId, message.command);
+          break;
+        case 'terminalChunk':
+          renderTerminalChunk(message.terminalId, message.line);
+          break;
+        case 'terminalEnd':
+          renderTerminalEnd(message.terminalId, message.exitCode);
+          break;
+        case 'contextStats':
+          updateContextIndicator(Number(message.used || 0), Number(message.max || 128000), Boolean(message.warn));
+          break;
+        case 'contextFiles':
+          renderContextFiles(message.files || []);
+          break;
+        case 'summaryDone':
+          addMessage('assistant', 'Chat history compressed for future replies.');
+          clearWorkingState('done');
+          break;
+        case 'summaryUnavailable':
+          addMessage('assistant', 'No chat history available to summarize yet.');
+          break;
+        case 'fileCreated':
+          addMessage('assistant', `✅ Created ${message.filename || 'file'}`);
+          break;
+        case 'notice':
+          addMessage('assistant', String(message.text || 'Notice'));
+          break;
+        default:
+          break;
       }
     });
+
+    function init() {
+      const model = document.getElementById('model-select');
+      const pref = model.getAttribute('data-preferred');
+      if (pref) {
+        model.value = pref;
+      }
+
+      const input = document.getElementById('chat-input');
+      const sendBtn = document.getElementById('send-btn');
+
+      input.addEventListener('input', () => {
+        input.style.height = '34px';
+        input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+        updateTokenEstimate(input.value);
+        sendBtn.disabled = isGenerating || !input.value.trim();
+      });
+
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          handleSend();
+        }
+      });
+
+      sendBtn.addEventListener('click', () => {
+        if (isGenerating) {
+          vscode.postMessage({ type: 'stopGeneration' });
+          return;
+        }
+        handleSend();
+      });
+
+      document.getElementById('clear-btn').addEventListener('click', () => {
+        vscode.postMessage({ type: 'clearChat' });
+      });
+
+      document.getElementById('enhance-btn').addEventListener('click', () => {
+        const text = input.value.trim();
+        if (!text) return;
+        vscode.postMessage({ type: 'enhancePrompt', text });
+      });
+
+      document.getElementById('attach-btn').addEventListener('click', () => {
+        input.value += (input.value ? ' ' : '') + '@file ';
+        input.focus();
+        updateTokenEstimate(input.value);
+      });
+
+      document.querySelectorAll('.tab').forEach((tab) => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.tab').forEach((item) => item.classList.remove('active'));
+          tab.classList.add('active');
+          activeMode = tab.dataset.mode;
+          const placeholder = {
+            chat: 'Ask NIM Coder...',
+            agent: 'Describe a coding task to execute with review...',
+            plan: 'Ask for an implementation plan...',
+            research: 'Ask for codebase research...',
+            discuss: 'Start a design discussion...'
+          };
+          input.placeholder = placeholder[activeMode] || 'Ask NIM Coder...';
+          vscode.postMessage({ type: 'modeChanged', mode: activeMode });
+        });
+      });
+
+      document.getElementById('toggle-side').addEventListener('click', () => {
+        const side = document.querySelector('.side');
+        if (side.style.display === 'none') {
+          side.style.display = 'flex';
+          document.getElementById('toggle-side').textContent = 'Hide';
+        } else {
+          side.style.display = 'none';
+        }
+      });
+
+      document.getElementById('sticky-status-cancel').addEventListener('click', () => {
+        vscode.postMessage({ type: 'stopGeneration' });
+      });
+
+      syncEmptyState();
+      updateTokenEstimate('');
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
 </html>

@@ -80,6 +80,7 @@ a { color: var(--vscode-textLink-foreground); }
     <select id="model">
       <option value="qwen/qwen3-coder-480b-a35b-instruct">qwen3 coder 480b</option>
       <option value="deepseek-ai/deepseek-v4-flash">deepseek v4 flash</option>
+  <option value="minimaxai/minimax-m2.7">Minimax m2.7</option>
       <option value="qwen/qwen3-235b-a22b-instruct">qwen3 235b</option>
       <option value="mistralai/devstral-small">devstral small</option>
     </select>
@@ -186,7 +187,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   statusItem.text = '⚡ NIM';
   statusItem.tooltip = 'Open NIM Coder settings';
-  statusItem.command = 'workbench.action.openSettings';
+  // open the chat when clicking the status item so users can access the chat
+  // even if the activity bar icon/view was moved or hidden
+  statusItem.command = 'nimcoder.openChat';
   statusItem.show();
 
   context.subscriptions.push(output, statusItem);
@@ -197,6 +200,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const contextBuilder = new ContextBuilder();
   const chatPanel = new ChatPanelProvider(context, config, nim, contextBuilder, output);
   const agentRunner = new AgentRunner(nim, contextBuilder, config);
+
+  // allow components to broadcast to chat webview
+  context.subscriptions.push(vscode.commands.registerCommand('nimcoder._broadcastStatus', (payload) => {
+    try {
+      chatPanel.sendToWebview(payload);
+    } catch (e) {
+      output.appendLine(`[broadcast] failed: ${(e as Error).message}`);
+    }
+  }));
 
   await showWelcomeIfNeeded(context, config, output, statusItem);
 
@@ -334,6 +346,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       pendingDiff = undefined;
       await vscode.commands.executeCommand('setContext', 'nimcoder.hasPendingDiff', false);
       vscode.window.showInformationMessage('NIM Coder changes discarded.');
+    })
+    ,
+    // Allow providers (webview) to ask the extension to present a diff preview
+    vscode.commands.registerCommand('nimcoder.presentDiffFromProvider', async (diff: string) => {
+      try {
+        await presentDiff(diff);
+      } catch (error) {
+        output.appendLine(`[presentDiffFromProvider] ${(error as Error).message}`);
+      }
     })
   );
 

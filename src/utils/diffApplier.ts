@@ -21,18 +21,31 @@ export interface PendingDiff {
   title: string;
 }
 
+export interface DiffLineStats {
+  added: number;
+  removed: number;
+}
+
 function normalizePath(path: string): string {
   return path.replace(/^a\//, '').replace(/^b\//, '').trim();
 }
 
 export function extractUnifiedDiff(text: string): string | undefined {
+  // First, check for fenced ```diff``` blocks
   const fencedMatch = text.match(/```diff\s*([\s\S]*?)```/i);
   if (fencedMatch) {
     return fencedMatch[1].trim();
   }
-  if (text.includes('--- ') && text.includes('+++ ')) {
-    return text.trim();
+
+  // If no fence, try to locate a unified diff by looking for the ---/+++ markers.
+  // Some model outputs include extra text before/after the actual diff; grab from
+  // the first '--- ' marker until the end so we don't miss hunks.
+  const firstDash = text.indexOf('--- ');
+  const hasPlus = text.indexOf('+++ ') !== -1;
+  if (firstDash !== -1 && hasPlus) {
+    return text.slice(firstDash).trim();
   }
+
   return undefined;
 }
 
@@ -86,6 +99,33 @@ export function parseUnifiedDiff(diffText: string): DiffFilePatch[] {
   return patches;
 }
 
+export function computePatchStats(patch: DiffFilePatch): DiffLineStats {
+  let added = 0;
+  let removed = 0;
+  for (const hunk of patch.hunks) {
+    for (const line of hunk.lines) {
+      if (line.startsWith('+')) {
+        added += 1;
+      }
+      if (line.startsWith('-')) {
+        removed += 1;
+      }
+    }
+  }
+  return { added, removed };
+}
+
+export function serializePatch(patch: DiffFilePatch): string {
+  const output: string[] = [];
+  output.push(`--- a/${patch.oldPath}`);
+  output.push(`+++ b/${patch.newPath}`);
+  for (const hunk of patch.hunks) {
+    output.push(`@@ -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount} @@`);
+    output.push(...hunk.lines);
+  }
+  return output.join('\n');
+}
+
 function applyHunksToText(original: string, hunks: DiffHunk[]): string {
   const source = original.split(/\r?\n/);
   const output: string[] = [];
@@ -120,6 +160,10 @@ function applyHunksToText(original: string, hunks: DiffHunk[]): string {
   return output.join('\n');
 }
 
+export function applyPatchToText(original: string, patch: DiffFilePatch): string {
+  return applyHunksToText(original, patch.hunks);
+}
+
 export async function buildWorkspaceEditFromDiff(diffText: string): Promise<vscode.WorkspaceEdit> {
   const patches = parseUnifiedDiff(diffText);
   const edit = new vscode.WorkspaceEdit();
@@ -128,17 +172,31 @@ export async function buildWorkspaceEditFromDiff(diffText: string): Promise<vsco
     const targetPath = patch.newPath || patch.oldPath;
     const uri = vscode.Uri.joinPath(vscode.workspace.workspaceFolders?.[0].uri ?? vscode.Uri.file('.'), targetPath);
     let original = '';
+    let exists = true;
 
     try {
       const bytes = await vscode.workspace.fs.readFile(uri);
       original = Buffer.from(bytes).toString('utf8');
     } catch {
+      // File doesn't exist on disk yet
+      exists = false;
       original = '';
     }
 
     const updated = applyHunksToText(original, patch.hunks);
-    const fullRange = new vscode.Range(0, 0, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
-    edit.replace(uri, fullRange, updated);
+
+    if (!exists) {
+      // Create the file and insert content
+      try {
+        edit.createFile(uri, { overwrite: true });
+      } catch {
+        // ignore
+      }
+      edit.insert(uri, new vscode.Position(0, 0), updated);
+    } else {
+      const fullRange = new vscode.Range(0, 0, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
+      edit.replace(uri, fullRange, updated);
+    }
   }
 
   return edit;

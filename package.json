@@ -132,7 +132,7 @@
         {
           "id": "nimcoder",
           "title": "NIM Coder",
-          "icon": "media/lightning.svg"
+          "icon": "./media/nimcoder-icon.svg"
         }
       ]
     },
@@ -197,13 +197,14 @@
     }
   },
   "dependencies": {
-    "openai": "^4.67.0"
+    "openai": "^6.39.1"
   },
   "devDependencies": {
-    "@types/node": "^22.10.1",
+    "@types/node": "^25.9.1",
     "@types/vscode": "^1.85.0",
     "@vscode/test-electron": "^2.5.0",
-    "esbuild": "^0.25.0",
-    "typescript": "^5.7.2"
+    "esbuild": "^0.28.0",
+    "typescript": "^6.0.3",
+    "@vscode/vsce": "^2.0.0"
   }
 }

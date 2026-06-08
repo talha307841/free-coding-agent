@@ -1,87 +1,235 @@
+<div align="center">
+
+<img src="https://img.shields.io/badge/NIM_Coder-AI_Agent-00FF94?style=for-the-badge&logoColor=black" alt="NIM Coder"/>
+
 # NIM Coder
 
-NIM Coder is a production-focused VS Code extension that connects to free NVIDIA NIM models through their OpenAI-compatible API.
+### An intelligent coding agent that plans, diffs, and applies changes — with full human review at every step.
+
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![VS Code Extension](https://img.shields.io/badge/VS_Code-Extension-0066B8?style=flat-square&logo=visualstudiocode&logoColor=white)](https://code.visualstudio.com/)
+[![MiniMax](https://img.shields.io/badge/Model-MiniMax_M2.7-6C47FF?style=flat-square)](https://www.minimaxi.com/)
+[![License](https://img.shields.io/badge/License-MIT-22C55E?style=flat-square)](LICENSE)
+
+</div>
+
+---
+
+## What is NIM Coder?
+
+NIM Coder is a VS Code–integrated AI coding agent built for engineers who want speed without losing control. Unlike autocomplete tools, NIM Coder understands your **entire codebase**, builds a structured plan, and shows you a **reviewable diff** before touching a single line — then applies it with one click.
+
+> **Full plan → confirm → diff review → verify** — every time, no surprises.
+
+---
 
 ## Features
 
-- Inline ghost-text completions with fast model routing
-- Sidebar chat panel with streaming tokens, model selector, and prompt enhancement
-- Unified diff proposal workflow with accept/reject actions
-- Right-click code actions:
-  - Explain Code
-  - Refactor This
-  - Fix Bug
-  - Add Documentation
-  - Generate Unit Tests
-  - Optimize Performance
-- Diagnostic quick fix: ✨ Fix with NIM Coder
-- Autonomous agent loop with workspace context and terminal feedback
-- Smart context packing with TF-IDF relevance scoring
-- Secure API key storage via VS Code SecretStorage
+- **Smart file discovery** — searches only your source files, never `venv/`, `node_modules/`, or build artifacts
+- **Complexity-aware planning** — simple tasks execute instantly; complex refactors get a full step-by-step plan
+- **Inline diff viewer** — colored line-by-line diff with accept, modify, or reject per file
+- **Parallel execution** — all diffs generated simultaneously, accepted independently
+- **Sticky status bar** — always shows what the agent is doing, even mid-scroll
+- **Multi-file context tracking** — keeps full conversation and file state across operations
+- **Terminal integration** — runs shell commands inline, streams output in real time
+- **Token-aware** — live context usage display so you never hit limits unexpectedly
 
-## Requirements
+---
 
-- VS Code 1.85+
-- Node.js 18+
+## Demo
 
-## Install and Run
+### Proposing a targeted code change
 
-1. Install dependencies:
-	- npm install
-2. Compile the extension:
-	- npm run compile
-3. Press F5 in VS Code to launch Extension Development Host.
+NIM Coder locates the exact lines to change, generates a clean diff, and waits for your approval before writing anything to disk.
 
-## First-time Onboarding
+![NIM Coder diff view showing proposed changes to chatPanel.ts with Accept, Modify, and Reject buttons](./media/agent-diff-proposal.png)
 
-On first activation, NIM Coder opens a welcome setup panel:
+> **0 lines removed · 5 lines added** — the agent shows the line count up front so you know the scope before reading the diff.
 
-1. Get your free key at https://build.nvidia.com
-2. Paste the API key
-3. Pick your default model
-4. Test connection
+---
 
-You can also run command:
+### Multi-step agent execution
 
-- NIM Coder: Set API Key
+For larger tasks, NIM Coder runs a numbered execution plan, applies each patch after acceptance, and confirms every file saved.
 
-## Command List
+![NIM Coder agent executing a 17-step plan, showing file update confirmations and diff cards for each change](./media/agent-step-execution.png)
 
-- NIM Coder: Open Chat
-- NIM Coder: Focus Chat
-- NIM Coder: Start Agent Task
-- NIM Coder: Set API Key
-- NIM Coder: Explain Code
-- NIM Coder: Refactor This
-- NIM Coder: Fix Bug
-- NIM Coder: Add Documentation
-- NIM Coder: Generate Unit Tests
-- NIM Coder: Optimize Performance
+> Each step shows its status live — `✅ src/providers/chatPanel.ts updated — 24 lines removed, 40 lines added, file saved` — so you always know where you are in the process.
 
-## Settings
+---
 
-- nimcoder.completions.enabled
-- nimcoder.completions.triggerDelay
-- nimcoder.preferredChatModel
-- nimcoder.preferredAgentModel
-- nimcoder.maxContextTokens
-- nimcoder.showTokenCounter
-- nimcoder.agent.requireConfirmation
+## How it works
 
-## Security
+```
+You type a task
+      │
+      ▼
+ Classify complexity
+  ┌───┴────────────┐
+  │ Simple task    │  Complex task
+  │ (e.g. remove  │  (e.g. refactor
+  │  a class)     │   a module)
+  └───┬────────────┘
+      │                    │
+      ▼                    ▼
+ Grep source files    Show plan →
+ Find exact lines     Confirm →
+      │                    │
+      └─────────┬──────────┘
+                ▼
+        Generate diffs
+        (all files in parallel)
+                │
+                ▼
+        Show diff cards
+        [Accept] [Modify] [Reject]
+                │
+                ▼
+        Apply patches + confirm
+                │
+                ▼
+        Run tests / verify
+```
 
-- API key is stored only in VS Code SecretStorage under nimcoder.apiKey
-- API keys are never logged to output
-- Chat webview enforces Content-Security-Policy
+---
 
-## NVIDIA NIM Endpoint
+## Installation
 
-- Base URL: https://integrate.api.nvidia.com/v1
+```bash
+# Clone the repo
+git clone https://github.com/talha307841/free-coding-agent.git
+cd free-coding-agent
 
-## Development Notes
+# Install dependencies
+npm install
 
-The bundle is built with esbuild to dist/extension.js.
+# Build the extension
+npm run build
 
-Compile command:
+# Open in VS Code
+code .
+# Then press F5 to launch the extension host
+```
 
-- esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node
+Or install from the VS Code Marketplace *(coming soon)*.
+
+---
+
+## Usage
+
+1. Open a project folder in VS Code
+2. Open NIM Coder from the sidebar (`Ctrl+Shift+N`)
+3. Select **Agent** mode from the tab bar
+4. Type your task in plain English:
+
+```
+remove the scraping bee backend from main.py
+refactor the auth module to use JWT
+add error handling to all API calls in routes/
+```
+
+NIM Coder will find the relevant files, propose changes, and wait for your review.
+
+---
+
+## Modes
+
+| Mode | What it does |
+|------|-------------|
+| **Chat** | Ask questions about your code, get explanations |
+| **Agent** | Full plan → execute → diff → apply workflow |
+| **Plan** | Review and edit the agent's plan before execution |
+| **Research** | Deep-dive into a topic across your codebase |
+| **Discuss** | Conversational code review and architecture discussion |
+
+---
+
+## Configuration
+
+```jsonc
+// .vscode/settings.json
+{
+  "nimCoder.model": "minimaxai/minimax-m2.7",
+  "nimCoder.maxContextTokens": 128000,
+  "nimCoder.excludeDirs": ["venv", ".venv", "node_modules", "dist", "build"],
+  "nimCoder.autoApproveSimpleTasks": false,
+  "nimCoder.parallelDiffGeneration": true
+}
+```
+
+---
+
+## Architecture
+
+```
+free-coding-agent/
+├── src/
+│   ├── extension.ts               # VS Code extension entry point
+│   ├── config.ts                  # Extension settings and defaults
+│   ├── contextBuilder.ts          # Workspace context retrieval
+│   ├── nimClient.ts               # NVIDIA NIM client wrapper
+│   ├── modelRouter.ts             # Model routing and fallback
+│   ├── commands/                  # Slash/command handlers
+│   ├── providers/
+│   │   ├── chatPanel.ts           # Main chat + agent workflow provider
+│   │   ├── agentRunner.ts
+│   │   ├── diagnosticFixer.ts
+│   │   └── inlineCompletion.ts
+│   ├── utils/
+│   │   ├── diffApplier.ts         # Unified diff parsing/application
+│   │   ├── fileScanner.ts
+│   │   ├── streamParser.ts
+│   │   └── tokenCounter.ts
+│   ├── workflow/
+│   │   └── stateMachine.ts
+│   └── webview/
+│       └── chatPanel.html         # Webview UI
+├── media/
+│   ├── agent-diff-proposal.png
+│   └── agent-step-execution.png
+└── package.json
+```
+
+---
+
+## Roadmap
+
+- [ ] Multi-model support (GPT-4o, Claude, Gemini)
+- [ ] Git integration — auto-commit accepted changes with generated messages
+- [ ] Test runner integration — automatically run tests after applying patches
+- [ ] Workspace memory — remember context across sessions
+- [ ] Team sync — share agent sessions with teammates
+- [ ] CLI mode — run NIM Coder from the terminal without VS Code
+
+---
+
+## Contributing
+
+Pull requests are welcome. For major changes, open an issue first to discuss what you'd like to change.
+
+```bash
+# Run tests
+npm test
+
+# Lint
+npm run lint
+
+# Build for production
+npm run package
+```
+
+---
+
+## License
+
+MIT © NIM Coder Contributors
+
+---
+
+<div align="center">
+
+Built for developers who want AI that asks before it acts.
+
+**[Report a Bug](https://github.com/talha307841/free-coding-agent/issues)** · **[Request a Feature](https://github.com/talha307841/free-coding-agent/issues)** · **[Documentation](https://github.com/talha307841/free-coding-agent#readme)**
+
+</div>

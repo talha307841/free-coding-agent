@@ -7,6 +7,8 @@ export const MODELS = {
   completion: 'mistralai/devstral-small',
   chatDefault: 'qwen/qwen3-coder-480b-a35b-instruct',
   agentDefault: 'deepseek-ai/deepseek-v4-flash',
+  // Minimax (available model id observed from NIM model list)
+  minimax: 'minimaxai/minimax-m2.7',
   reasoning: 'qwen/qwen3-235b-a22b-instruct',
   fallback: 'meta/llama-3.3-70b-instruct',
   nemotron: 'nvidia/llama-3.3-nemotron-super-49b-v1'

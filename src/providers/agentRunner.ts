@@ -61,6 +61,8 @@ export class AgentRunner {
 
     for (let step = 1; step <= 10; step += 1) {
       this.status.text = `⚡ NIM Agent running... (step ${step}/10)`;
+      // notify webview we're thinking about next step
+      try { await vscode.commands.executeCommand('nimcoder._broadcastStatus', { type: 'setStatus', phase: 'thinking' }); } catch {}
 
       const fileTree = await getWorkspaceTree();
       const context = await this.contextBuilder.buildContext(task, this.config.getMaxContextTokens());
@@ -73,6 +75,9 @@ export class AgentRunner {
         'Allowed actions: write_file, run_terminal, read_file, done.'
       ].filter(Boolean).join('\n\n');
 
+      // indicate reading while preparing prompt
+      try { await vscode.commands.executeCommand('nimcoder._broadcastStatus', { type: 'setStatus', phase: 'reading' }); } catch {}
+
       const content = await this.nim.chat({
         model: this.config.getPreferredAgentModel(),
         temperature: 0,
@@ -83,7 +88,14 @@ export class AgentRunner {
         ]
       });
 
+      // allow chat webview to scan assistant content for file creation
+      try { await vscode.commands.executeCommand('nimcoder._broadcastStatus', { assistantContent: content }); } catch {}
+
       this.output.appendLine(`\n[step ${step}] raw response:\n${content}`);
+      // if content includes code fences, tell webview we're writing
+      if (content.includes('```')) {
+        try { await vscode.commands.executeCommand('nimcoder._broadcastStatus', { type: 'setStatus', phase: 'writing' }); } catch {}
+      }
       const actions = parseActionBlock(content);
       if (actions.length === 0) {
         feedback = `Previous attempt failed: no valid action block parsed. Try again with correct JSON lines.`;
@@ -93,7 +105,10 @@ export class AgentRunner {
       let doneSummary: string | undefined;
       let nextFeedback = '';
       for (const action of actions) {
+        try { await vscode.commands.executeCommand('nimcoder._broadcastStatus', { type: 'setStatus', phase: action.type === 'run_terminal' ? 'running' : 'writing' }); } catch {}
         const result = await this.executeAction(action);
+        // after action run, notify done/running back to idle
+        try { await vscode.commands.executeCommand('nimcoder._broadcastStatus', { type: 'setStatus', phase: 'done' }); } catch {}
         this.output.appendLine(result.logLine);
         if (action.type === 'done') {
           doneSummary = action.summary;
