@@ -1,343 +1,2182 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="{{CSP}}" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NIM Coder Chat</title>
-  <link nonce="{{NONCE}}" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/styles/github-dark.min.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="{{CSP}}">
+  <title>NIM Coder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: var(--vscode-editor-background);
-      --fg: var(--vscode-editor-foreground);
-      --border: var(--vscode-editorWidget-border);
-      --input-bg: var(--vscode-input-background);
-      --input-fg: var(--vscode-input-foreground);
-      --button-bg: var(--vscode-button-background);
-      --button-fg: var(--vscode-button-foreground);
-      --muted: var(--vscode-descriptionForeground);
-      --accent: #34d399;
+      --bg: #0a0f14;
+      --bg-grad: radial-gradient(1200px 520px at 85% -200px, rgba(0, 255, 148, 0.16), transparent 60%), radial-gradient(800px 520px at -150px -180px, rgba(51, 194, 255, 0.12), transparent 58%);
+      --panel: #121922;
+      --panel-2: #151f2a;
+      --panel-3: #1a2734;
+      --border: #263748;
+      --text: #edf4ff;
+      --muted: #9eb2c8;
+      --accent: #00ff94;
+      --accent-soft: rgba(0, 255, 148, 0.14);
+      --danger-soft: rgba(255, 92, 92, 0.16);
+      --danger: #ff7070;
+      --success-soft: rgba(62, 220, 126, 0.14);
+      --success: #39d26f;
+      --warn: #f8c154;
+      --ts: #4ed7ff;
+      --py: #4f8eff;
+      --json: #f0c14a;
+      --line-add: rgba(57, 210, 111, 0.16);
+      --line-del: rgba(255, 112, 112, 0.16);
+      --line-ctx: rgba(255, 255, 255, 0.02);
+      --radius: 12px;
+      --font-ui: 'Space Grotesk', 'Segoe UI', sans-serif;
+      --font-code: 'JetBrains Mono', monospace;
     }
+
     * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
     body {
-      margin: 0;
-      font-family: var(--vscode-font-family);
-      background: radial-gradient(circle at 20% 0%, rgba(52, 211, 153, 0.15), transparent 35%), var(--bg);
-      color: var(--fg);
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-      height: 100vh;
+      background: var(--bg);
+      background-image: var(--bg-grad);
+      color: var(--text);
+      font-family: var(--font-ui);
+      overflow: hidden;
     }
-    .toolbar {
+
+    .shell {
+      height: 100%;
       display: grid;
-      grid-template-columns: 1fr auto auto;
-      gap: 8px;
-      padding: 10px;
-      border-bottom: 1px solid var(--border);
+      grid-template-columns: minmax(0, 1fr) 260px;
+      grid-template-rows: 52px minmax(0, 1fr) auto auto;
+      grid-template-areas:
+        "head side"
+        "chat side"
+        "enhance side"
+        "input side";
+    }
+
+    .header {
+      grid-area: head;
+      display: flex;
       align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(10, 15, 20, 0.7);
+      backdrop-filter: blur(8px);
+      min-width: 0;
     }
-    .toolbar select, .toolbar button {
-      background: var(--input-bg);
-      color: var(--input-fg);
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+
+    .brand .bolt {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      background: linear-gradient(140deg, #00ff94, #40ffd8);
+      box-shadow: 0 0 12px rgba(0, 255, 148, 0.55);
+      transform: skewX(-10deg);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .context-indicator {
+      font-size: 11px;
+      color: var(--muted);
       border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 6px 8px;
+      border-radius: 999px;
+      padding: 5px 10px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 190px;
     }
+
+    .context-indicator.warn {
+      border-color: rgba(248, 193, 84, 0.42);
+      color: #ffd886;
+      background: rgba(248, 193, 84, 0.12);
+    }
+
+    .tiny-btn, select {
+      height: 30px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--muted);
+      font-family: var(--font-ui);
+      font-size: 12px;
+      padding: 0 10px;
+    }
+
     .chat {
-      overflow-y: auto;
-      padding: 14px;
+      grid-area: chat;
+      overflow: auto;
+      padding: 12px;
       display: flex;
       flex-direction: column;
       gap: 10px;
+      min-height: 0;
     }
-    .bubble {
-      padding: 10px 12px;
-      border-radius: 10px;
+
+    .message {
+      max-width: 90%;
+      border-radius: var(--radius);
       border: 1px solid var(--border);
-      white-space: pre-wrap;
-      line-height: 1.4;
+      padding: 11px 12px;
+      position: relative;
+      transition: border-color 120ms ease;
     }
-    .bubble.user {
-      background: color-mix(in oklab, var(--vscode-button-background), black 70%);
+
+    .message .time {
+      opacity: 0;
+      position: absolute;
+      top: -18px;
+      font-size: 10px;
+      color: var(--muted);
+      transition: opacity 120ms ease;
+      pointer-events: none;
+    }
+
+    .message:hover .time { opacity: 1; }
+
+    .user {
       align-self: flex-end;
-      max-width: 85%;
+      background: linear-gradient(145deg, rgba(0, 255, 148, 0.25), rgba(0, 196, 255, 0.16));
+      border-color: rgba(0, 255, 148, 0.36);
+      border-radius: 13px 13px 3px 13px;
     }
-    .bubble.assistant {
-      background: color-mix(in oklab, var(--vscode-editor-background), var(--accent) 8%);
+
+    .user .time { right: 6px; }
+
+    .assistant {
       align-self: flex-start;
-      max-width: 92%;
+      background: var(--panel);
+      border-radius: 3px 13px 13px 13px;
+      box-shadow: inset 3px 0 0 rgba(0, 255, 148, 0.35);
     }
-    .inputWrap {
-      border-top: 1px solid var(--border);
-      padding: 10px;
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 8px;
-    }
-    textarea {
-      width: 100%;
-      min-height: 90px;
-      resize: vertical;
-      background: var(--input-bg);
-      color: var(--input-fg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px;
-      font-family: var(--vscode-editor-font-family, monospace);
+
+    .assistant .time { left: 6px; }
+
+    .msg-content {
+      line-height: 1.5;
+      overflow-wrap: anywhere;
       font-size: 13px;
     }
-    .actions {
+
+    .msg-content p { margin: 0 0 8px; }
+    .msg-content p:last-child { margin-bottom: 0; }
+    .msg-content ul, .msg-content ol { margin: 0 0 8px; padding-left: 18px; }
+
+    pre {
+      margin: 0;
+      border-radius: 10px;
+      border: 1px solid #2d3d4f;
+      background: #0e151e;
+      padding: 10px;
+      overflow: auto;
+      position: relative;
+    }
+
+    pre code {
+      font-family: var(--font-code);
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre;
+      display: block;
+      min-width: max-content;
+    }
+
+    .code-copy {
+      position: absolute;
+      right: 8px;
+      top: 8px;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      border-radius: 6px;
+      font-size: 11px;
+      padding: 4px 6px;
+      cursor: pointer;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      padding: 6px 10px;
+      font-size: 12px;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.02);
+      margin-bottom: 8px;
+    }
+
+    .dots { display: inline-flex; gap: 3px; }
+    .dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+      animation: pulse 1.2s infinite;
+      opacity: 0;
+    }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes pulse { 0%,80%,100%{opacity:0} 40%{opacity:1} }
+
+    .card {
+      border-radius: 11px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      padding: 10px;
+      align-self: stretch;
+    }
+
+    .read-card summary {
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    .read-badge {
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 10px;
+      border: 1px solid transparent;
+      color: var(--text);
+      flex-shrink: 0;
+    }
+
+    .read-badge.python { background: rgba(79, 142, 255, 0.18); border-color: rgba(79, 142, 255, 0.45); }
+    .read-badge.typescript { background: rgba(78, 215, 255, 0.18); border-color: rgba(78, 215, 255, 0.45); }
+    .read-badge.json { background: rgba(240, 193, 74, 0.18); border-color: rgba(240, 193, 74, 0.45); }
+    .read-badge.text, .read-badge.javascript, .read-badge.markdown, .read-badge.html, .read-badge.css { background: rgba(255, 255, 255, 0.09); border-color: rgba(255, 255, 255, 0.18); }
+
+    .read-summary {
+      margin-top: 7px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .read-content {
+      margin-top: 9px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #101925;
+      max-height: 200px;
+      overflow: auto;
+      padding: 8px;
+      font-family: var(--font-code);
+      font-size: 12px;
+      white-space: pre;
+    }
+
+    .diff-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+
+    .diff-stats { color: var(--muted); }
+    .diff-stats b { color: var(--text); }
+
+    .diff-view {
+      max-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #0f1722;
+      font-family: var(--font-code);
+      font-size: 12px;
+    }
+
+    .diff-row {
+      display: grid;
+      grid-template-columns: 48px 48px 20px minmax(0, 1fr);
+      gap: 0;
+      align-items: center;
+      border-top: 1px solid rgba(255,255,255,0.03);
+      min-height: 22px;
+    }
+
+    .diff-row:first-child { border-top: none; }
+    .diff-row.ctx { background: var(--line-ctx); }
+    .diff-row.add { background: var(--line-add); }
+    .diff-row.del { background: var(--line-del); }
+    .diff-row.skip { background: rgba(255, 255, 255, 0.03); }
+
+    .diff-cell {
+      padding: 2px 6px;
+      white-space: pre;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .ln { color: #7f97ad; text-align: right; }
+    .op { text-align: center; color: #90a6bd; }
+    .text { overflow-x: auto; }
+
+    .diff-actions {
+      margin-top: 9px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .btn {
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--panel-3);
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+
+    .btn.primary { background: var(--accent-soft); border-color: rgba(0, 255, 148, 0.45); color: #a9ffd8; }
+    .btn.warn { background: rgba(248, 193, 84, 0.14); border-color: rgba(248, 193, 84, 0.45); color: #ffd886; }
+    .btn.danger { background: rgba(255, 112, 112, 0.12); border-color: rgba(255, 112, 112, 0.45); color: #ffb0b0; }
+
+    .inline-input {
+      width: 100%;
+      margin-top: 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #0f1722;
+      color: var(--text);
+      padding: 8px;
+      font-family: var(--font-ui);
+      font-size: 12px;
+      resize: vertical;
+      min-height: 64px;
+    }
+
+    .terminal-head {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: #bcf8dd;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .terminal-lines {
+      font-family: var(--font-code);
+      font-size: 12px;
+      white-space: pre-wrap;
+      max-height: 220px;
+      overflow: auto;
+      background: #0f1722;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      line-height: 1.45;
+    }
+
+    .verify-code { margin-top: 8px; color: var(--muted); font-size: 12px; }
+    .verify-code.ok { color: #a9ffd8; }
+    .verify-code.fail { color: #ffb0b0; }
+
+    .side {
+      grid-area: side;
+      border-left: 1px solid var(--border);
+      background: rgba(15, 23, 35, 0.72);
+      backdrop-filter: blur(6px);
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .side-head {
+      padding: 12px 10px 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .file-list {
+      overflow: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 0;
+      flex: 1;
+    }
+
+    .ctx-file {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      font-size: 12px;
+      cursor: pointer;
+      background: rgba(255,255,255,0.01);
+    }
+
+    .ctx-file:hover { border-color: rgba(255,255,255,0.2); }
+
+    .ctx-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      color: var(--text);
+    }
+
+    .dot-pending {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--warn);
+      box-shadow: 0 0 8px rgba(248, 193, 84, 0.7);
+      flex-shrink: 0;
+    }
+
+    .ctx-meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
+    }
+
+    .preview {
+      border-top: 1px solid rgba(255,255,255,0.05);
+      padding: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      min-height: 62px;
+    }
+
+    .enhance-wrap {
+      grid-area: enhance;
+      border-top: 1px solid var(--border);
+      padding: 8px 12px 6px;
+      background: rgba(12, 18, 27, 0.95);
+      display: flex;
       align-items: center;
-      justify-content: space-between;
     }
-    .leftActions, .rightActions { display: flex; gap: 8px; }
-    button.primary {
-      background: var(--button-bg);
-      color: var(--button-fg);
-      border: none;
-      border-radius: 8px;
-      padding: 8px 12px;
-      cursor: pointer;
-    }
-    button.secondary {
-      background: transparent;
-      color: var(--input-fg);
+
+    .enhance-btn {
+      border-radius: 999px;
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 8px 12px;
-      cursor: pointer;
-    }
-    .tokens {
+      padding: 5px 10px;
+      background: var(--panel-2);
       color: var(--muted);
       font-size: 12px;
-    }
-    .typing::after {
-      content: '▍';
-      display: inline-block;
-      margin-left: 2px;
-      animation: pulse 1s infinite;
-      color: var(--accent);
-    }
-    @keyframes pulse {
-      0% { opacity: 0.2; }
-      50% { opacity: 1; }
-      100% { opacity: 0.2; }
-    }
-    pre {
-      position: relative;
-      padding: 10px;
-      border-radius: 8px;
-      overflow: auto;
-      background: rgba(0, 0, 0, 0.35);
-    }
-    .copyBtn {
-      position: absolute;
-      top: 8px;
-      right: 8px;
-      font-size: 11px;
-      padding: 4px 8px;
-      border: 1px solid var(--border);
-      border-radius: 5px;
-      background: var(--input-bg);
-      color: var(--input-fg);
       cursor: pointer;
     }
-    .fileHints {
-      display: none;
+
+    .input-wrap {
+      grid-area: input;
+      border-top: 1px solid var(--border);
+      background: rgba(9, 14, 20, 0.95);
+      position: sticky;
+      bottom: 0;
+      padding: 10px 12px 12px;
+    }
+
+    .input-row {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) auto auto;
+      gap: 8px;
+      align-items: end;
+    }
+
+    .attach {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
       border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--input-bg);
+      background: var(--panel-2);
+      color: var(--muted);
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    .chat-input {
       max-height: 120px;
-      overflow-y: auto;
-      font-size: 12px;
+      min-height: 34px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 8px 10px;
+      resize: none;
+      font-family: var(--font-ui);
+      font-size: 13px;
+      line-height: 1.35;
     }
-    .fileHints.visible { display: block; }
-    .hintItem {
-      padding: 6px 8px;
+
+    .token {
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+      align-self: center;
+    }
+
+    .send {
+      min-width: 86px;
+      height: 34px;
+      border-radius: 10px;
+      border: 1px solid rgba(0, 255, 148, 0.45);
+      background: linear-gradient(140deg, rgba(0, 255, 148, 0.26), rgba(0, 255, 148, 0.12));
+      color: #c9ffe7;
+      font-weight: 700;
       cursor: pointer;
+      transition: all 150ms ease;
     }
-    .hintItem:hover {
-      background: color-mix(in oklab, var(--input-bg), white 8%);
+
+    .send:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      border-color: var(--border);
+      background: var(--panel-2);
+      color: var(--muted);
+    }
+
+    .tabs {
+      margin-top: 8px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      padding-top: 8px;
+      display: flex;
+      gap: 7px;
+      justify-content: space-between;
+    }
+
+    .tab {
+      flex: 1;
+      min-width: 0;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--muted);
+      padding: 6px 8px;
+      font-size: 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 150ms ease;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tab.active {
+      background: rgba(0, 255, 148, 0.17);
+      border-color: rgba(0, 255, 148, 0.54);
+      color: #b9ffdf;
+      font-weight: 700;
+      box-shadow: inset 0 0 0 1px rgba(0, 255, 148, 0.25);
+    }
+
+    @media (max-width: 980px) {
+      .shell {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+          "head"
+          "chat"
+          "enhance"
+          "input";
+      }
+      .side { display: none; }
+      .message { max-width: 96%; }
     }
   </style>
 </head>
 <body>
-  <div class="toolbar">
-    <strong>NIM Coder</strong>
-    <select id="modelSelect">
-      <option value="qwen/qwen3-coder-480b-a35b-instruct">qwen3-coder-480b</option>
-      <option value="deepseek-ai/deepseek-v4-flash">deepseek-v4-flash</option>
-      <option value="qwen/qwen3-235b-a22b-instruct">qwen3-235b</option>
-      <option value="mistralai/devstral-small">devstral-small</option>
-    </select>
-    <button id="clearBtn" class="secondary">Clear chat</button>
-  </div>
-  <div id="chat" class="chat"></div>
-  <div class="inputWrap">
-    <textarea id="input" placeholder="Ask NIM Coder... Use @workspace or @file path/to/file.ts"></textarea>
-    <div id="fileHints" class="fileHints"></div>
-    <div class="actions">
-      <div class="leftActions">
-        <button id="enhanceBtn" class="secondary">Enhance Prompt</button>
-        <button id="stopBtn" class="secondary">Stop</button>
+  <div class="shell">
+    <header class="header">
+      <div class="brand"><span class="bolt"></span><span>NIM Coder</span></div>
+      <div class="header-right">
+        <div id="context-indicator" class="context-indicator">~0 / 128000 tokens</div>
+        <select id="model-select" data-preferred="{{PREFERRED_MODEL}}">
+          <option value="mistralai/devstral-small">mistralai/devstral-small</option>
+          <option value="deepseek-ai/deepseek-v4-flash">deepseek-ai/deepseek-v4-flash</option>
+          <option value="minimaxai/minimax-m2.7">minimaxai/minimax-m2.7</option>
+          <option value="qwen/qwen3-coder-480b-a35b-instruct">qwen/qwen3-coder-480b-a35b-instruct</option>
+        </select>
+        <button id="clear-btn" class="tiny-btn">New</button>
       </div>
-      <div class="rightActions">
-        <span id="tokens" class="tokens">~0 tokens used this session</span>
-        <button id="sendBtn" class="primary">Send</button>
+    </header>
+
+    <main id="messages" class="chat"></main>
+
+    <aside class="side">
+      <div class="side-head">
+        <span>Files in Context</span>
+        <button id="toggle-side" class="tiny-btn">Hide</button>
       </div>
+      <div id="context-files" class="file-list"></div>
+      <div id="file-preview" class="preview">Select a file in context to preview actions.</div>
+    </aside>
+
+    <div class="enhance-wrap">
+      <button id="enhance-btn" class="enhance-btn">✨ Enhance prompt</button>
     </div>
+
+    <footer class="input-wrap">
+      <div class="input-row">
+        <button id="attach-btn" class="attach" title="Attach file">📎</button>
+        <textarea id="chat-input" class="chat-input" rows="1" placeholder="Ask NIM Coder..."></textarea>
+        <span id="token-count" class="token">~0 tokens</span>
+        <button id="send-btn" class="send" disabled>➤ Send</button>
+      </div>
+      <div class="tabs">
+        <button class="tab active" data-mode="chat">💬 Chat</button>
+        <button class="tab" data-mode="agent">🤖 Agent</button>
+        <button class="tab" data-mode="plan">🗺️ Plan</button>
+        <button class="tab" data-mode="research">🔎 Research</button>
+        <button class="tab" data-mode="discuss">🗣️ Discuss</button>
+      </div>
+    </footer>
   </div>
 
-  <script nonce="{{NONCE}}" src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.10.0/highlight.min.js"></script>
+  <script nonce="{{NONCE}}" src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script nonce="{{NONCE}}">
     const vscode = acquireVsCodeApi();
-    const chatEl = document.getElementById('chat');
-    const inputEl = document.getElementById('input');
-    const sendBtn = document.getElementById('sendBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const clearBtn = document.getElementById('clearBtn');
-    const enhanceBtn = document.getElementById('enhanceBtn');
-    const modelSelect = document.getElementById('modelSelect');
-    const tokenEl = document.getElementById('tokens');
-    const fileHints = document.getElementById('fileHints');
-    let activeAssistantBubble = null;
 
-    function renderMarkdown(content) {
-      const escaped = content
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+    let activeMode = 'chat';
+    let isGenerating = false;
+    let assistantBubble = null;
+    let assistantText = '';
+    const terminalCards = new Map();
+    const contextFiles = [];
 
-      const withCode = escaped.replace(/```([\s\S]*?)```/g, (match, code) => {
-        return `<pre><button class="copyBtn">Copy</button><code>${code}</code></pre>`;
-      });
-      return withCode.replace(/\n/g, '<br/>');
+    function now() {
+      return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
 
-    function attachCopyButtons() {
-      chatEl.querySelectorAll('.copyBtn').forEach((btn) => {
-        if (btn.dataset.bound) return;
-        btn.dataset.bound = '1';
-        btn.addEventListener('click', () => {
-          const code = btn.parentElement.querySelector('code').innerText;
-          navigator.clipboard.writeText(code);
-          btn.textContent = 'Copied';
-          setTimeout(() => { btn.textContent = 'Copy'; }, 800);
+    function esc(value) {
+      return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+    }
+
+    function renderMarkdown(value) {
+      try {
+        if (window.marked) {
+          return marked.parse(String(value));
+        }
+      } catch {
+        return esc(value).replace(/\n/g, '<br>');
+      }
+      return esc(value).replace(/\n/g, '<br>');
+    }
+
+    function addMessage(role, content) {
+      const wrap = document.createElement('div');
+      wrap.className = `message ${role}`;
+      wrap.innerHTML = `<span class="time">${now()}</span><div class="msg-content">${role === 'assistant' ? renderMarkdown(content) : esc(content).replace(/\n/g, '<br>')}</div>`;
+      document.getElementById('messages').appendChild(wrap);
+      processCodeBlocks(wrap);
+      scrollBottom();
+      return wrap;
+    }
+
+    function addStatusBubble() {
+      assistantBubble = document.createElement('div');
+      assistantBubble.className = 'message assistant';
+      assistantBubble.innerHTML = `<span class="time">${now()}</span><div class="status" data-status hidden></div><div class="msg-content" data-content></div>`;
+      document.getElementById('messages').appendChild(assistantBubble);
+      scrollBottom();
+    }
+
+    function setStatus(phase, detail = '') {
+      if (!assistantBubble) {
+        return;
+      }
+      const el = assistantBubble.querySelector('[data-status]');
+      if (!phase || phase === 'done' || phase === 'idle') {
+        el.hidden = true;
+        return;
+      }
+      const mapping = {
+        reading: ['🔍', 'Reading file...'],
+        thinking: ['🧠', 'Thinking...'],
+        writing: ['✍️', 'Writing changes...'],
+        running: ['🔧', 'Running command...'],
+        failed: ['❌', 'Failed']
+      };
+      const pair = mapping[phase] || ['🧠', String(phase)];
+      el.hidden = false;
+      el.innerHTML = `<span>${pair[0]}</span><span>${pair[1]}${detail ? ` ${esc(detail)}` : ''}</span><span class="dots"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>`;
+    }
+
+    function processCodeBlocks(scope) {
+      scope.querySelectorAll('pre').forEach((pre) => {
+        if (pre.querySelector('.code-copy')) return;
+        const copy = document.createElement('button');
+        copy.className = 'code-copy';
+        copy.textContent = 'Copy';
+        copy.addEventListener('click', async () => {
+          await navigator.clipboard.writeText(pre.innerText);
+          copy.textContent = 'Copied';
+          setTimeout(() => { copy.textContent = 'Copy'; }, 700);
+        });
+        pre.appendChild(copy);
+      });
+    }
+
+    function updateTokenEstimate(text) {
+      const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+      const estimate = Math.round(words * 0.75);
+      document.getElementById('token-count').textContent = `~${estimate} tokens`;
+    }
+
+    function updateContextIndicator(used, max, warn) {
+      const node = document.getElementById('context-indicator');
+      node.textContent = `~${used.toLocaleString()} / ${max.toLocaleString()} tokens`;
+      node.classList.toggle('warn', Boolean(warn));
+      if (warn) {
+        node.textContent += '  ⚠️ Context getting large';
+      }
+    }
+
+    function scrollBottom() {
+      const messages = document.getElementById('messages');
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function buildDiffRows(diff) {
+      const lines = String(diff).split(/\r?\n/);
+      const rows = [];
+      let oldLine = 0;
+      let newLine = 0;
+      for (const line of lines) {
+        if (line.startsWith('@@')) {
+          const match = line.match(/^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/);
+          if (match) {
+            oldLine = Number(match[1]);
+            newLine = Number(match[2]);
+          }
+          continue;
+        }
+        if (line.startsWith('--- ') || line.startsWith('+++ ')) {
+          continue;
+        }
+        if (line.startsWith('+')) {
+          rows.push({ type: 'add', old: '', next: newLine, op: '+', text: line.slice(1) });
+          newLine += 1;
+          continue;
+        }
+        if (line.startsWith('-')) {
+          rows.push({ type: 'del', old: oldLine, next: '', op: '-', text: line.slice(1) });
+          oldLine += 1;
+          continue;
+        }
+        if (line.startsWith(' ')) {
+          rows.push({ type: 'ctx', old: oldLine, next: newLine, op: ' ', text: line.slice(1) });
+          oldLine += 1;
+          newLine += 1;
+        }
+      }
+
+      const changed = rows
+        .map((row, index) => ({ row, index }))
+        .filter((item) => item.row.type !== 'ctx')
+        .map((item) => item.index);
+
+      if (changed.length === 0) {
+        return rows;
+      }
+
+      const keep = new Set();
+      for (const idx of changed) {
+        for (let i = Math.max(0, idx - 3); i <= Math.min(rows.length - 1, idx + 3); i += 1) {
+          keep.add(i);
+        }
+      }
+
+      const compact = [];
+      let runStart = -1;
+      for (let i = 0; i < rows.length; i += 1) {
+        if (keep.has(i)) {
+          if (runStart !== -1) {
+            compact.push({ type: 'skip', count: i - runStart });
+            runStart = -1;
+          }
+          compact.push(rows[i]);
+        } else if (runStart === -1) {
+          runStart = i;
+        }
+      }
+      if (runStart !== -1) {
+        compact.push({ type: 'skip', count: rows.length - runStart });
+      }
+      return compact;
+    }
+
+    function renderDiffCard(payload) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.diffId = payload.diffId;
+      const rows = buildDiffRows(payload.diff);
+
+      card.innerHTML = `
+        <div class="diff-header">
+          <span>✍️ Proposing changes to ${esc(payload.filePath)}</span>
+          <span class="diff-stats">− <b>${payload.stats.removed}</b> lines removed  + <b>${payload.stats.added}</b> lines added</span>
+        </div>
+        <div class="diff-view" data-diff-view></div>
+        <div class="diff-actions">
+          <button class="btn primary" data-accept>✅ Accept Changes</button>
+          <button class="btn warn" data-modify>✏️ Modify</button>
+          <button class="btn danger" data-reject>❌ Reject</button>
+        </div>
+      `;
+
+      const view = card.querySelector('[data-diff-view]');
+      for (const row of rows) {
+        if (row.type === 'skip') {
+          const el = document.createElement('div');
+          el.className = 'diff-row skip';
+          el.innerHTML = `<div class="diff-cell ln"></div><div class="diff-cell ln"></div><div class="diff-cell op">…</div><div class="diff-cell text">${row.count} unchanged lines collapsed</div>`;
+          view.appendChild(el);
+          continue;
+        }
+        const el = document.createElement('div');
+        el.className = `diff-row ${row.type}`;
+        el.innerHTML = `<div class="diff-cell ln">${row.old}</div><div class="diff-cell ln">${row.next}</div><div class="diff-cell op">${row.op}</div><div class="diff-cell text">${esc(row.text)}</div>`;
+        view.appendChild(el);
+      }
+
+      card.querySelector('[data-accept]').addEventListener('click', () => {
+        vscode.postMessage({ type: 'diffDecision', diffId: payload.diffId, action: 'accept' });
+        card.querySelector('.diff-actions').innerHTML = '<span class="verify-code ok">Accepted. Applying patch...</span>';
+      });
+
+      card.querySelector('[data-modify]').addEventListener('click', () => {
+        if (card.querySelector('.inline-input')) return;
+        const box = document.createElement('textarea');
+        box.className = 'inline-input';
+        box.placeholder = 'Describe how the diff should be modified...';
+        const submit = document.createElement('button');
+        submit.className = 'btn warn';
+        submit.textContent = 'Send modification';
+        submit.addEventListener('click', () => {
+          vscode.postMessage({ type: 'diffDecision', diffId: payload.diffId, action: 'modify', prompt: box.value.trim() });
+          submit.disabled = true;
+          submit.textContent = 'Re-running...';
+        });
+        card.appendChild(box);
+        card.appendChild(submit);
+      });
+
+      card.querySelector('[data-reject]').addEventListener('click', () => {
+        vscode.postMessage({ type: 'diffDecision', diffId: payload.diffId, action: 'reject' });
+      });
+
+      document.getElementById('messages').appendChild(card);
+      scrollBottom();
+    }
+
+    function renderReadCard(payload) {
+      const { annotation, content } = payload;
+      const card = document.createElement('details');
+      card.className = 'card read-card';
+      card.innerHTML = `
+        <summary>
+          <span>📄 Read: ${esc(annotation.filePath)} (lines ${annotation.startLine}-${annotation.endLine})</span>
+          <span class="read-badge ${esc(annotation.languageTag)}">${esc(annotation.languageTag)}</span>
+        </summary>
+        <div class="read-summary">Backend: ${esc(annotation.summary)}</div>
+        <div class="read-content">${esc(content)}</div>
+      `;
+      document.getElementById('messages').appendChild(card);
+      scrollBottom();
+    }
+
+    function renderPlanCard(steps, revised) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `<div class="diff-header"><span>${revised ? '🧠 Revised plan ready' : '🧠 Proposed plan'}</span></div>`;
+      const list = document.createElement('ol');
+      list.style.margin = '0';
+      list.style.paddingLeft = '18px';
+      steps.forEach((step) => {
+        const li = document.createElement('li');
+        li.textContent = step;
+        li.style.fontSize = '12px';
+        li.style.marginBottom = '4px';
+        list.appendChild(li);
+      });
+      card.appendChild(list);
+
+      const notes = document.createElement('textarea');
+      notes.className = 'inline-input';
+      notes.placeholder = 'Optional: request plan modifications before execution';
+      card.appendChild(notes);
+
+      const actions = document.createElement('div');
+      actions.className = 'diff-actions';
+      actions.innerHTML = `<button class="btn primary" data-approve>✅ Approve plan</button><button class="btn warn" data-modify>✏️ Request changes</button>`;
+      card.appendChild(actions);
+
+      actions.querySelector('[data-approve]').addEventListener('click', () => {
+        vscode.postMessage({ type: 'planDecision', approved: true, notes: notes.value.trim() });
+        actions.innerHTML = '<span class="verify-code ok">Plan approved.</span>';
+      });
+
+      actions.querySelector('[data-modify]').addEventListener('click', () => {
+        vscode.postMessage({ type: 'planDecision', approved: false, notes: notes.value.trim() });
+        actions.innerHTML = '<span class="verify-code">Requested plan modifications...</span>';
+      });
+
+      document.getElementById('messages').appendChild(card);
+      scrollBottom();
+    }
+
+    function renderRejectChoices(diffId, filePath) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `<div class="diff-header"><span>❌ Changes rejected for ${esc(filePath)}</span><span class="diff-stats">How should the workflow proceed?</span></div>`;
+      const actions = document.createElement('div');
+      actions.className = 'diff-actions';
+      actions.innerHTML = '<button class="btn">Skip</button><button class="btn warn">Retry</button><button class="btn danger">Abort</button>';
+      const [skip, retry, abort] = actions.querySelectorAll('button');
+      skip.addEventListener('click', () => { vscode.postMessage({ type: 'rejectDecision', diffId, action: 'skip' }); card.remove(); });
+      retry.addEventListener('click', () => { vscode.postMessage({ type: 'rejectDecision', diffId, action: 'retry' }); card.remove(); });
+      abort.addEventListener('click', () => { vscode.postMessage({ type: 'rejectDecision', diffId, action: 'abort' }); card.remove(); });
+      card.appendChild(actions);
+      document.getElementById('messages').appendChild(card);
+      scrollBottom();
+    }
+
+    function renderTerminalStart(terminalId, command) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.terminalId = terminalId;
+      card.innerHTML = `
+        <div class="terminal-head">
+          <span>$ ${esc(command)}</span>
+          <button class="btn danger" data-stop>⛔ Stop</button>
+        </div>
+        <div class="terminal-lines" data-lines>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</div>
+        <div class="verify-code" data-exit>Running...</div>
+      `;
+      card.querySelector('[data-stop]').addEventListener('click', () => {
+        vscode.postMessage({ type: 'stopTerminal', terminalId });
+      });
+      terminalCards.set(terminalId, card);
+      document.getElementById('messages').appendChild(card);
+      scrollBottom();
+    }
+
+    function renderTerminalChunk(terminalId, line) {
+      const card = terminalCards.get(terminalId);
+      if (!card) return;
+      const lines = card.querySelector('[data-lines]');
+      lines.textContent += `\n${line}`;
+      lines.scrollTop = lines.scrollHeight;
+      scrollBottom();
+    }
+
+    function renderTerminalEnd(terminalId, exitCode) {
+      const card = terminalCards.get(terminalId);
+      if (!card) return;
+      const lines = card.querySelector('[data-lines]');
+      lines.textContent += '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━';
+      const exit = card.querySelector('[data-exit]');
+      const ok = Number(exitCode) === 0;
+      exit.className = `verify-code ${ok ? 'ok' : 'fail'}`;
+      exit.textContent = `Exit code: ${exitCode} ${ok ? '✅' : '❌'}`;
+      const stop = card.querySelector('[data-stop]');
+      if (stop) stop.remove();
+      terminalCards.delete(terminalId);
+    }
+
+    function renderContextFiles(files) {
+      contextFiles.length = 0;
+      files.forEach((item) => contextFiles.push(item));
+      const list = document.getElementById('context-files');
+      list.innerHTML = '';
+      files.forEach((file) => {
+        const node = document.createElement('div');
+        node.className = 'ctx-file';
+        node.innerHTML = `
+          <div class="ctx-title">
+            <span>📄 ${esc(file.filePath)}</span>
+            ${file.pending ? '<span class="dot-pending"></span>' : ''}
+          </div>
+          <div class="ctx-meta">
+            <span>${file.read ? 'Read ✅' : 'Not read'}</span>
+            <span>${file.modified ? 'Modified ✅' : file.pending ? 'Pending ⏳' : 'Pending'}</span>
+          </div>
+        `;
+        node.addEventListener('click', () => {
+          document.getElementById('file-preview').innerHTML = `
+            <div><b>${esc(file.filePath)}</b></div>
+            <div style="margin-top:6px">Read: ${file.read ? 'yes' : 'no'} | Modified: ${file.modified ? 'yes' : 'no'} | Pending: ${file.pending ? 'yes' : 'no'}</div>
+            <div style="margin-top:8px"><button class="tiny-btn" id="open-preview-file">Open file</button></div>
+          `;
+          document.getElementById('open-preview-file').addEventListener('click', () => {
+            vscode.postMessage({ type: 'openFile', path: file.filePath });
+          });
+        });
+        list.appendChild(node);
+      });
+    }
+
+    function setGenerating(value) {
+      isGenerating = value;
+      const send = document.getElementById('send-btn');
+      const text = document.getElementById('chat-input').value.trim();
+      send.disabled = value || !text;
+    }
+
+    function handleSend() {
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      if (!text || isGenerating) return;
+      addMessage('user', text);
+      setGenerating(true);
+      const model = document.getElementById('model-select').value;
+      vscode.postMessage({ type: 'chat', content: text, mode: activeMode, model });
+      input.value = '';
+      input.style.height = '34px';
+      updateTokenEstimate('');
+      assistantText = '';
+      addStatusBubble();
+      setStatus('thinking');
+      setGenerating(true);
+    }
+
+    window.addEventListener('message', (event) => {
+      const message = event.data || {};
+      switch (message.type) {
+        case 'streamStart':
+          if (!assistantBubble) {
+            addStatusBubble();
+          }
+          break;
+        case 'streamToken':
+          assistantText += String(message.token || '');
+          if (!assistantBubble) addStatusBubble();
+          assistantBubble.querySelector('[data-content]').innerHTML = renderMarkdown(assistantText);
+          processCodeBlocks(assistantBubble);
+          scrollBottom();
+          break;
+        case 'streamEnd':
+          setStatus('done');
+          assistantBubble = null;
+          setGenerating(false);
+          break;
+        case 'setStatus':
+          setStatus(String(message.phase || ''), String(message.detail || ''));
+          if (String(message.phase || '') === 'failed') {
+            setGenerating(false);
+          }
+          break;
+        case 'streamError':
+          addMessage('assistant', `❌ ${message.message || 'Generation failed'}`);
+          setGenerating(false);
+          break;
+        case 'cleared':
+          document.getElementById('messages').innerHTML = '';
+          assistantBubble = null;
+          break;
+        case 'enhancedPrompt':
+          document.getElementById('chat-input').value = String(message.text || '');
+          updateTokenEstimate(document.getElementById('chat-input').value);
+          break;
+        case 'readCard':
+          renderReadCard(message);
+          break;
+        case 'planCard':
+          renderPlanCard(message.steps || [], Boolean(message.revised));
+          break;
+        case 'diffCard':
+          renderDiffCard(message);
+          break;
+        case 'diffApplied':
+          addMessage('assistant', `✅ ${message.filePath} updated — ${message.removed} lines removed, ${message.added} lines added, file saved`);
+          break;
+        case 'diffRejected':
+          renderRejectChoices(message.diffId, message.filePath);
+          break;
+        case 'workflowProgress':
+          addMessage('assistant', `Step ${message.current}/${message.total}: ${message.label}`);
+          break;
+        case 'workflowDone':
+          addMessage('assistant', `✅ ${message.summary}`);
+          assistantBubble = null;
+          setGenerating(false);
+          break;
+        case 'terminalStart':
+          renderTerminalStart(message.terminalId, message.command);
+          break;
+        case 'terminalChunk':
+          renderTerminalChunk(message.terminalId, message.line);
+          break;
+        case 'terminalEnd':
+          renderTerminalEnd(message.terminalId, message.exitCode);
+          break;
+        case 'contextStats':
+          updateContextIndicator(Number(message.used || 0), Number(message.max || 128000), Boolean(message.warn));
+          break;
+        case 'contextFiles':
+          renderContextFiles(message.files || []);
+          break;
+        case 'summaryDone':
+          addMessage('assistant', 'Chat history compressed for future replies.');
+          break;
+        case 'summaryUnavailable':
+          addMessage('assistant', 'No chat history available to summarize yet.');
+          break;
+        case 'fileCreated':
+          addMessage('assistant', `✅ Created ${message.filename || 'file'}`);
+          break;
+        case 'notice':
+          addMessage('assistant', String(message.text || 'Notice'));
+          break;
+        default:
+          break;
+      }
+    });
+
+    function init() {
+      const model = document.getElementById('model-select');
+      const pref = model.getAttribute('data-preferred');
+      if (pref) {
+        model.value = pref;
+      }
+
+      const input = document.getElementById('chat-input');
+      const sendBtn = document.getElementById('send-btn');
+
+      input.addEventListener('input', () => {
+        input.style.height = '34px';
+        input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+        updateTokenEstimate(input.value);
+        sendBtn.disabled = isGenerating || !input.value.trim();
+      });
+
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          handleSend();
+        }
+      });
+
+      sendBtn.addEventListener('click', handleSend);
+
+      document.getElementById('clear-btn').addEventListener('click', () => {
+        vscode.postMessage({ type: 'clearChat' });
+      });
+
+      document.getElementById('enhance-btn').addEventListener('click', () => {
+        const text = input.value.trim();
+        if (!text) return;
+        vscode.postMessage({ type: 'enhancePrompt', text });
+      });
+
+      document.getElementById('attach-btn').addEventListener('click', () => {
+        input.value += (input.value ? ' ' : '') + '@file ';
+        input.focus();
+      });
+
+      document.querySelectorAll('.tab').forEach((tab) => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.tab').forEach((item) => item.classList.remove('active'));
+          tab.classList.add('active');
+          activeMode = tab.dataset.mode;
+          const placeholder = {
+            chat: 'Ask NIM Coder...',
+            agent: 'Describe a coding task to execute with review...',
+            plan: 'Ask for an implementation plan...',
+            research: 'Ask for codebase research...',
+            discuss: 'Start a design discussion...'
+          };
+          input.placeholder = placeholder[activeMode] || 'Ask NIM Coder...';
+          vscode.postMessage({ type: 'modeChanged', mode: activeMode });
         });
       });
 
-      if (window.hljs) {
-        chatEl.querySelectorAll('pre code').forEach((block) => window.hljs.highlightElement(block));
-      }
+      document.getElementById('toggle-side').addEventListener('click', () => {
+        const side = document.querySelector('.side');
+        if (side.style.display === 'none') {
+          side.style.display = 'flex';
+          document.getElementById('toggle-side').textContent = 'Hide';
+        } else {
+          side.style.display = 'none';
+        }
+      });
+
+      addMessage('assistant', 'NIM Coder is ready. Agent mode now runs a full plan → confirm → diff review → verify workflow.');
     }
 
-    function addBubble(role, content) {
-      const div = document.createElement('div');
-      div.className = `bubble ${role}`;
-      div.innerHTML = renderMarkdown(content);
-      chatEl.appendChild(div);
-      chatEl.scrollTop = chatEl.scrollHeight;
-      attachCopyButtons();
-      return div;
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="{{CSP}}">
+  <title>NIM Coder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #080d12;
+      --bg-2: #0f1722;
+      --card: #152033;
+      --border: #2a3a56;
+      --text: #e8efff;
+      --muted: #8fa2c1;
+      --accent: #00ff94;
+      --accent-dim: rgba(0, 255, 148, 0.12);
+      --danger: #ff6f7d;
+      --success: #32f0a4;
+      --warn: #f8d067;
+      --read-python: #2d6bff;
+      --read-typescript: #2de7ff;
+      --read-json: #ffd45a;
+      --read-text: #9aa8c7;
     }
 
-    function sendMessage() {
-      const text = inputEl.value.trim();
-      if (!text) return;
-      vscode.postMessage({ type: 'send', text, model: modelSelect.value });
-      inputEl.value = '';
-      fileHints.classList.remove('visible');
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; font-family: 'Space Grotesk', 'Segoe UI', sans-serif; color: var(--text); background: radial-gradient(circle at 10% -20%, #1a2f49 0%, transparent 36%), radial-gradient(circle at 92% 8%, #133423 0%, transparent 31%), var(--bg); overflow: hidden; }
+    body { display: grid; grid-template-columns: 1fr 280px; }
+
+    .main-shell { display: flex; flex-direction: column; min-width: 0; }
+
+    .header {
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), transparent);
+      flex: 0 0 auto;
+      gap: 8px;
     }
 
-    sendBtn.addEventListener('click', sendMessage);
-    stopBtn.addEventListener('click', () => vscode.postMessage({ type: 'stop' }));
-    clearBtn.addEventListener('click', () => vscode.postMessage({ type: 'clear' }));
-    enhanceBtn.addEventListener('click', () => vscode.postMessage({ type: 'enhancePrompt', text: inputEl.value }));
+    .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; letter-spacing: 0.2px; }
+    .brand .dot { width: 9px; height: 9px; border-radius: 999px; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
+    .header-right { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .context-indicator { font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 4px 8px; white-space: nowrap; }
+    .context-indicator.warn { color: var(--warn); border-color: rgba(248, 208, 103, 0.5); }
 
-    inputEl.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault();
-        sendMessage();
-      }
-    });
+    .messages { flex: 1 1 auto; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
 
-    inputEl.addEventListener('input', () => {
-      const value = inputEl.value;
-      const atFileMatch = value.match(/@file\s+([^\s]*)$/);
-      if (atFileMatch) {
-        vscode.postMessage({ type: 'listFiles', query: atFileMatch[1] });
-      } else {
-        fileHints.classList.remove('visible');
-      }
-    });
+    .msg {
+      max-width: 92%;
+      border-radius: 16px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      position: relative;
+      overflow-wrap: anywhere;
+    }
+    .msg.user {
+      margin-left: auto;
+      background: linear-gradient(145deg, #173455, #1e4670);
+      border-bottom-right-radius: 4px;
+    }
+    .msg.agent {
+      margin-right: auto;
+      background: linear-gradient(145deg, rgba(13, 20, 31, 0.8), rgba(20, 28, 44, 0.9));
+      border-bottom-left-radius: 4px;
+    }
+    .msg-time {
+      display: none;
+      position: absolute;
+      top: -16px;
+      right: 10px;
+      color: var(--muted);
+      font-size: 10px;
+    }
+    .msg:hover .msg-time { display: block; }
 
-    window.addEventListener('message', (event) => {
-      const msg = event.data;
-      if (msg.type === 'message') {
-        addBubble(msg.role, msg.content);
-      }
-      if (msg.type === 'streamStart') {
-        activeAssistantBubble = addBubble('assistant', '');
-        activeAssistantBubble.classList.add('typing');
-      }
-      if (msg.type === 'streamToken' && activeAssistantBubble) {
-        const current = activeAssistantBubble.textContent || '';
-        activeAssistantBubble.innerHTML = renderMarkdown(current + msg.token);
-        chatEl.scrollTop = chatEl.scrollHeight;
-        attachCopyButtons();
-      }
-      if (msg.type === 'streamEnd') {
-        if (activeAssistantBubble) {
-          activeAssistantBubble.classList.remove('typing');
+    pre, code { font-family: 'JetBrains Mono', monospace; }
+    .msg pre {
+      background: #0b121c;
+      border: 1px solid #314766;
+      border-radius: 10px;
+      padding: 10px;
+      overflow: auto;
+      position: relative;
+    }
+    .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 7px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+
+    .status-pill {
+      align-self: flex-start;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--border);
+      background: rgba(8, 14, 23, 0.9);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .dots { display: inline-flex; gap: 3px; }
+    .dots i {
+      width: 5px;
+      height: 5px;
+      border-radius: 999px;
+      background: currentColor;
+      opacity: 0;
+      animation: pulse 1.1s infinite;
+    }
+    .dots i:nth-child(2) { animation-delay: 0.16s; }
+    .dots i:nth-child(3) { animation-delay: 0.32s; }
+    @keyframes pulse { 0%,80%,100% { opacity: 0; } 40% { opacity: 1; } }
+
+    .read-card,
+    .diff-card,
+    .plan-card,
+    .terminal-card,
+    .workflow-note {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(15, 23, 34, 0.9);
+      overflow: hidden;
+    }
+
+    .read-head,
+    .diff-head,
+    .plan-head,
+    .terminal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .read-body,
+    .plan-body,
+    .terminal-body,
+    .diff-body { padding: 10px; }
+
+    .read-card details summary { cursor: pointer; color: var(--muted); }
+    .read-code { margin-top: 8px; max-height: 220px; overflow: auto; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); background: #0b121b; padding: 8px; white-space: pre; }
+
+    .read-card[data-lang="python"] { border-left: 3px solid var(--read-python); }
+    .read-card[data-lang="typescript"] { border-left: 3px solid var(--read-typescript); }
+    .read-card[data-lang="json"] { border-left: 3px solid var(--read-json); }
+    .read-card[data-lang="text"] { border-left: 3px solid var(--read-text); }
+
+    .diff-stats { color: var(--muted); font-size: 12px; }
+    .diff-view {
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      overflow: auto;
+      max-height: 330px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      background: #0a1119;
+    }
+    .diff-row {
+      display: grid;
+      grid-template-columns: 52px 52px 1fr;
+      align-items: start;
+      white-space: pre;
+      border-top: 1px solid rgba(255,255,255,0.03);
+    }
+    .diff-row .ln { color: #7f92af; text-align: right; padding: 2px 6px; user-select: none; }
+    .diff-row .tx { padding: 2px 8px; overflow-x: auto; }
+    .diff-row.add { background: rgba(45, 235, 125, 0.17); }
+    .diff-row.del { background: rgba(255, 90, 116, 0.18); }
+    .diff-row.skip { background: rgba(255,255,255,0.04); color: var(--muted); font-style: italic; }
+
+    .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+    .btn {
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 7px 10px;
+      cursor: pointer;
+      transition: 150ms ease;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn.accept { border-color: rgba(50, 240, 164, 0.5); color: var(--success); }
+    .btn.reject { border-color: rgba(255, 111, 125, 0.5); color: var(--danger); }
+    .btn.primary { background: var(--accent); color: #03120a; border-color: transparent; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .modify-box,
+    .reject-box {
+      margin-top: 8px;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 8px;
+      background: rgba(0,0,0,0.2);
+    }
+
+    .modify-box textarea,
+    .input textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #0c1420;
+      color: var(--text);
+      padding: 8px;
+      resize: none;
+      font-family: inherit;
+      outline: none;
+    }
+
+    .terminal-body {
+      max-height: 260px;
+      overflow: auto;
+      background: #0b1018;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .workflow-note { padding: 9px 10px; color: var(--muted); font-size: 12px; }
+
+    .composer {
+      flex: 0 0 auto;
+      border-top: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(19, 28, 44, 0.85), rgba(10, 16, 24, 0.92));
+      position: sticky;
+      bottom: 0;
+      padding: 8px 10px 10px;
+    }
+
+    .enhance-row { margin-bottom: 8px; }
+
+    .input {
+      display: grid;
+      grid-template-columns: auto 1fr auto auto;
+      gap: 8px;
+      align-items: end;
+    }
+
+    .input textarea { min-height: 40px; max-height: 120px; }
+    .token { color: var(--muted); font-size: 11px; white-space: nowrap; }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      margin-top: 8px;
+      padding-top: 8px;
+    }
+
+    .tab {
+      flex: 1 1 0;
+      min-width: 0;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.03);
+      color: #9ba9c1;
+      padding: 7px 5px;
+      text-align: center;
+      cursor: pointer;
+      transition: 150ms ease;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tab.active {
+      color: #04150d;
+      background: var(--accent);
+      border-color: transparent;
+      font-weight: 700;
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.25) inset;
+    }
+
+    .sidebar {
+      border-left: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(14, 22, 32, 0.95), rgba(9, 14, 22, 0.97));
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .sidebar-head {
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .files-list { flex: 1 1 auto; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+    .file-item {
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      line-height: 1.3;
+      background: rgba(255,255,255,0.02);
+      position: relative;
+    }
+    .file-item.pending::after {
+      content: '';
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: var(--warn);
+      position: absolute;
+      top: 8px;
+      right: 8px;
+    }
+    .file-meta { color: var(--muted); margin-top: 4px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .preview {
+      border-top: 1px solid var(--border);
+      padding: 8px;
+      min-height: 90px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    @media (max-width: 980px) {
+      body { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="main-shell">
+    <header class="header">
+      <div class="brand"><span class="dot"></span><span>NIM Coder</span></div>
+      <div class="header-right">
+        <select id="model-select" data-preferred="{{PREFERRED_MODEL}}">
+          <option value="mistralai/devstral-small">mistralai/devstral-small</option>
+          <option value="deepseek-ai/deepseek-v4-flash">deepseek-ai/deepseek-v4-flash</option>
+          <option value="minimaxai/minimax-m2.7">minimaxai/minimax-m2.7</option>
+          <option value="qwen/qwen3-coder-480b-a35b-instruct">qwen/qwen3-coder-480b-a35b-instruct</option>
+        </select>
+        <div id="context-indicator" class="context-indicator">~0 / 128000 tokens</div>
+      </div>
+    </header>
+
+    <main id="messages" class="messages"></main>
+
+    <footer class="composer">
+      <div class="enhance-row">
+        <button id="enhance-btn" class="btn">✨ Enhance</button>
+      </div>
+      <div class="input">
+        <button id="attach-btn" class="btn" title="Attach file">📎</button>
+        <textarea id="chat-input" placeholder="Ask NIM Coder..." rows="1"></textarea>
+        <span id="token-count" class="token">~0 tokens</span>
+        <button id="send-btn" class="btn primary" disabled>➤ Send</button>
+      </div>
+      <div class="tabs">
+        <button class="tab active" data-mode="chat">💬 Chat</button>
+        <button class="tab" data-mode="agent">🤖 Agent</button>
+        <button class="tab" data-mode="plan">🗺 Plan</button>
+        <button class="tab" data-mode="research">🔎 Research</button>
+        <button class="tab" data-mode="discuss">🗣 Discuss</button>
+      </div>
+    </footer>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <span>📁 Files in Context</span>
+      <button id="toggle-sidebar" class="btn">Hide</button>
+    </div>
+    <div id="files-list" class="files-list"></div>
+    <div id="preview" class="preview">Select a file to preview details.</div>
+  </aside>
+
+  <script nonce="{{NONCE}}" src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script nonce="{{NONCE}}">
+    const vscode = acquireVsCodeApi();
+
+    let activeMode = 'chat';
+    let activeStatus = null;
+    let activeAssistantStream = null;
+    const terminalCards = new Map();
+    const filesContext = [];
+
+    function nowLabel() {
+      const now = new Date();
+      return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function escapeHtml(text) {
+      return String(text).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+    }
+
+    function markdownToHtml(text) {
+      try {
+        if (window.marked) {
+          return marked.parse(text, { breaks: true, gfm: true });
         }
-        activeAssistantBubble = null;
-        if (typeof msg.tokenCount === 'number') {
-          tokenEl.textContent = `~${msg.tokenCount} tokens used this session`;
-        }
+      } catch (error) {
       }
-      if (msg.type === 'streamError') {
-        if (activeAssistantBubble) {
-          activeAssistantBubble.classList.remove('typing');
-        }
-        activeAssistantBubble = null;
-        addBubble('assistant', `Error: ${msg.message}`);
-      }
-      if (msg.type === 'cleared') {
-        chatEl.innerHTML = '';
-        tokenEl.textContent = '~0 tokens used this session';
-      }
-      if (msg.type === 'enhancedPrompt') {
-        inputEl.value = msg.text || '';
-        inputEl.focus();
-      }
-      if (msg.type === 'fileSuggestions') {
-        const files = Array.isArray(msg.files) ? msg.files : [];
-        if (files.length === 0) {
-          fileHints.classList.remove('visible');
+      return escapeHtml(text).replace(/\n/g, '<br>');
+    }
+
+    function appendElement(el) {
+      const messages = document.getElementById('messages');
+      messages.appendChild(el);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function appendMessage(role, content) {
+      const node = document.createElement('article');
+      node.className = `msg ${role}`;
+      node.innerHTML = `<span class="msg-time">${nowLabel()}</span><div class="msg-body">${role === 'agent' ? markdownToHtml(content) : escapeHtml(content).replace(/\n/g, '<br>')}</div>`;
+      appendElement(node);
+      decorateCodeBlocks(node);
+      return node;
+    }
+
+    function decorateCodeBlocks(container) {
+      container.querySelectorAll('pre').forEach((pre) => {
+        if (pre.querySelector('.copy-btn')) {
           return;
         }
+        const button = document.createElement('button');
+        button.className = 'copy-btn';
+        button.textContent = 'Copy';
+        button.addEventListener('click', async () => {
+          await navigator.clipboard.writeText(pre.innerText);
+          button.textContent = 'Copied';
+          setTimeout(() => { button.textContent = 'Copy'; }, 900);
+        });
+        pre.appendChild(button);
+      });
+    }
 
-        fileHints.innerHTML = '';
-        for (const file of files) {
-          const item = document.createElement('div');
-          item.className = 'hintItem';
-          item.textContent = file;
-          item.addEventListener('click', () => {
-            inputEl.value = inputEl.value.replace(/@file\s+([^\s]*)$/, `@file ${file}`);
-            inputEl.focus();
-            fileHints.classList.remove('visible');
-          });
-          fileHints.appendChild(item);
-        }
-        fileHints.classList.add('visible');
+    function setStatus(phase, detail) {
+      if (activeStatus && activeStatus.parentElement) {
+        activeStatus.parentElement.removeChild(activeStatus);
       }
-      if (msg.type === 'focusInput') {
-        inputEl.focus();
+      if (!phase || phase === 'done' || phase === 'idle') {
+        activeStatus = null;
+        return;
+      }
+      const iconMap = {
+        reading: '🔍',
+        thinking: '🧠',
+        writing: '✍️',
+        running: '🔧',
+        failed: '❌'
+      };
+      const textMap = {
+        reading: 'Reading file...',
+        thinking: 'Thinking...',
+        writing: 'Writing changes...',
+        running: 'Running command...',
+        failed: 'Failed'
+      };
+      const line = document.createElement('div');
+      line.className = 'status-pill';
+      line.innerHTML = `${iconMap[phase] || 'ℹ️'} <span>${detail || textMap[phase] || phase}</span><span class="dots"><i></i><i></i><i></i></span>`;
+      appendElement(line);
+      activeStatus = line;
+    }
+
+    function appendReadCard(payload) {
+      const { annotation, content } = payload;
+      const card = document.createElement('section');
+      card.className = 'read-card';
+      card.dataset.lang = annotation.languageTag || 'text';
+      card.innerHTML = `
+        <div class="read-head">
+          <span>📄 Read: ${escapeHtml(annotation.filePath)} (lines ${annotation.startLine}-${annotation.endLine})</span>
+          <span>${escapeHtml(annotation.summary)}</span>
+        </div>
+        <div class="read-body">
+          <details>
+            <summary>Show lines read</summary>
+            <div class="read-code">${escapeHtml(content)}</div>
+          </details>
+        </div>
+      `;
+      appendElement(card);
+    }
+
+    function parseHunks(diffText) {
+      const lines = diffText.split(/\r?\n/);
+      const rows = [];
+      let oldLine = 0;
+      let newLine = 0;
+      for (const line of lines) {
+        const match = line.match(/^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/);
+        if (match) {
+          oldLine = Number(match[1]);
+          newLine = Number(match[2]);
+          continue;
+        }
+        if (line.startsWith('--- ') || line.startsWith('+++ ')) {
+          continue;
+        }
+        if (line.startsWith('+')) {
+          rows.push({ type: 'add', oldNo: '', newNo: newLine++, text: line });
+          continue;
+        }
+        if (line.startsWith('-')) {
+          rows.push({ type: 'del', oldNo: oldLine++, newNo: '', text: line });
+          continue;
+        }
+        if (line.startsWith(' ')) {
+          rows.push({ type: 'ctx', oldNo: oldLine++, newNo: newLine++, text: line });
+          continue;
+        }
+      }
+      return rows;
+    }
+
+    function collapseRows(rows, contextSize) {
+      const changed = rows
+        .map((row, index) => ({ row, index }))
+        .filter((entry) => entry.row.type !== 'ctx')
+        .map((entry) => entry.index);
+
+      if (changed.length === 0) {
+        return rows;
+      }
+
+      const include = new Set();
+      changed.forEach((index) => {
+        for (let i = Math.max(0, index - contextSize); i <= Math.min(rows.length - 1, index + contextSize); i += 1) {
+          include.add(i);
+        }
+      });
+
+      const output = [];
+      let cursor = 0;
+      while (cursor < rows.length) {
+        if (include.has(cursor)) {
+          output.push(rows[cursor]);
+          cursor += 1;
+          continue;
+        }
+        let next = cursor;
+        while (next < rows.length && !include.has(next)) {
+          next += 1;
+        }
+        output.push({ type: 'skip', oldNo: '', newNo: '', text: `... ${next - cursor} unchanged lines collapsed ...` });
+        cursor = next;
+      }
+
+      return output;
+    }
+
+    function appendDiffCard(payload) {
+      const card = document.createElement('section');
+      card.className = 'diff-card';
+      const rows = collapseRows(parseHunks(payload.diff || ''), 3);
+      const rowsHtml = rows.map((row) => {
+        const cls = row.type === 'add' ? 'add' : row.type === 'del' ? 'del' : row.type === 'skip' ? 'skip' : 'ctx';
+        return `<div class="diff-row ${cls}"><div class="ln">${row.oldNo}</div><div class="ln">${row.newNo}</div><div class="tx">${escapeHtml(row.text)}</div></div>`;
+      }).join('');
+
+      card.innerHTML = `
+        <div class="diff-head">
+          <span>✍️ Proposing changes to ${escapeHtml(payload.filePath)}</span>
+          <span class="diff-stats">-${payload.stats.removed} +${payload.stats.added}</span>
+        </div>
+        <div class="diff-body">
+          <div class="workflow-note">Step ${payload.step}/${payload.totalSteps}${payload.revised ? ' (revised)' : ''}</div>
+          <div class="diff-view">${rowsHtml}</div>
+          <div class="actions">
+            <button class="btn accept" data-act="accept">✅ Accept Changes</button>
+            <button class="btn" data-act="modify">✏️ Modify</button>
+            <button class="btn reject" data-act="reject">❌ Reject</button>
+          </div>
+          <div class="modify-box" style="display:none">
+            <textarea rows="3" placeholder="Describe what to change in this diff..."></textarea>
+            <div class="actions">
+              <button class="btn primary" data-send-modify>Send modification</button>
+            </div>
+          </div>
+          <div class="reject-box" style="display:none">
+            <div class="workflow-note">Changes rejected. How should the workflow proceed?</div>
+            <div class="actions">
+              <button class="btn" data-reject-next="skip">Skip</button>
+              <button class="btn" data-reject-next="retry">Retry</button>
+              <button class="btn reject" data-reject-next="abort">Abort</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const sendDecision = (action, prompt) => {
+        vscode.postMessage({ type: 'diffDecision', diffId: payload.diffId, action, prompt: prompt || '' });
+      };
+
+      card.querySelector('[data-act="accept"]').addEventListener('click', () => sendDecision('accept'));
+      card.querySelector('[data-act="reject"]').addEventListener('click', () => {
+        sendDecision('reject');
+        card.querySelector('.reject-box').style.display = 'block';
+      });
+      card.querySelector('[data-act="modify"]').addEventListener('click', () => {
+        card.querySelector('.modify-box').style.display = 'block';
+      });
+      card.querySelector('[data-send-modify]').addEventListener('click', () => {
+        const value = card.querySelector('.modify-box textarea').value.trim();
+        if (!value) {
+          return;
+        }
+        sendDecision('modify', value);
+      });
+
+      card.querySelectorAll('[data-reject-next]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          vscode.postMessage({ type: 'rejectDecision', diffId: payload.diffId, action: btn.getAttribute('data-reject-next') });
+        });
+      });
+
+      appendElement(card);
+    }
+
+    function appendPlanCard(payload) {
+      const card = document.createElement('section');
+      card.className = 'plan-card';
+      const items = (payload.steps || []).map((step, i) => `<li>${i + 1}. ${escapeHtml(step)}</li>`).join('');
+      card.innerHTML = `
+        <div class="plan-head">🗺 Plan ${payload.revised ? '(revised)' : ''}</div>
+        <div class="plan-body">
+          <ul>${items}</ul>
+          <div class="actions">
+            <button class="btn accept" data-plan="approve">✅ Approve plan</button>
+            <button class="btn" data-plan="modify">✏️ Modify plan</button>
+          </div>
+          <div class="modify-box" style="display:none">
+            <textarea rows="3" placeholder="How should the plan change?"></textarea>
+            <div class="actions"><button class="btn primary" data-plan-send>Send plan changes</button></div>
+          </div>
+        </div>
+      `;
+
+      card.querySelector('[data-plan="approve"]').addEventListener('click', () => {
+        vscode.postMessage({ type: 'planDecision', approved: true });
+      });
+
+      card.querySelector('[data-plan="modify"]').addEventListener('click', () => {
+        card.querySelector('.modify-box').style.display = 'block';
+      });
+
+      card.querySelector('[data-plan-send]').addEventListener('click', () => {
+        const notes = card.querySelector('.modify-box textarea').value.trim();
+        vscode.postMessage({ type: 'planDecision', approved: false, notes });
+      });
+
+      appendElement(card);
+    }
+
+    function appendTerminalStart(payload) {
+      const card = document.createElement('section');
+      card.className = 'terminal-card';
+      card.dataset.terminalId = payload.terminalId;
+      card.innerHTML = `
+        <div class="terminal-head">
+          <span>$ ${escapeHtml(payload.command)}</span>
+          <button class="btn reject" data-stop>⛔ Stop</button>
+        </div>
+        <div class="terminal-body"></div>
+      `;
+      card.querySelector('[data-stop]').addEventListener('click', () => {
+        vscode.postMessage({ type: 'stopTerminal', terminalId: payload.terminalId });
+      });
+      appendElement(card);
+      terminalCards.set(payload.terminalId, card);
+    }
+
+    function appendTerminalChunk(payload) {
+      const card = terminalCards.get(payload.terminalId);
+      if (!card) {
+        return;
+      }
+      const body = card.querySelector('.terminal-body');
+      body.textContent += `${payload.line}\n`;
+      body.scrollTop = body.scrollHeight;
+    }
+
+    function finishTerminal(payload) {
+      const card = terminalCards.get(payload.terminalId);
+      if (!card) {
+        return;
+      }
+      const head = card.querySelector('.terminal-head');
+      const ok = Number(payload.exitCode) === 0;
+      const badge = document.createElement('span');
+      badge.className = 'workflow-note';
+      badge.textContent = `Exit code: ${payload.exitCode} ${ok ? '✅' : '❌'}`;
+      head.appendChild(badge);
+      const stop = card.querySelector('[data-stop]');
+      if (stop) {
+        stop.remove();
+      }
+      terminalCards.delete(payload.terminalId);
+    }
+
+    function appendWorkflowNote(text) {
+      const card = document.createElement('div');
+      card.className = 'workflow-note';
+      card.textContent = text;
+      appendElement(card);
+    }
+
+    function updateContextIndicator(used, max, warn) {
+      const el = document.getElementById('context-indicator');
+      el.textContent = `~${used.toLocaleString()} / ${max.toLocaleString()} tokens`;
+      el.classList.toggle('warn', Boolean(warn));
+      if (warn) {
+        appendWorkflowNote('⚠️ Context getting large — consider starting a new session');
+      }
+    }
+
+    function updateFilesContext(files) {
+      filesContext.length = 0;
+      files.forEach((file) => filesContext.push(file));
+      const list = document.getElementById('files-list');
+      list.innerHTML = '';
+      filesContext.forEach((file) => {
+        const item = document.createElement('div');
+        item.className = `file-item${file.pending ? ' pending' : ''}`;
+        item.innerHTML = `
+          <div>📄 ${escapeHtml(file.filePath)}</div>
+          <div class="file-meta">
+            <span>[Read ${file.read ? '✅' : 'Not read'}]</span>
+            <span>[Modified ${file.modified ? '✅' : file.pending ? '⏳' : 'Pending'}]</span>
+          </div>
+        `;
+        item.addEventListener('click', () => {
+          const preview = document.getElementById('preview');
+          preview.innerHTML = `
+            <div><strong>${escapeHtml(file.filePath)}</strong></div>
+            <div>Read: ${file.read ? 'Yes' : 'No'}</div>
+            <div>Modified: ${file.modified ? 'Yes' : 'No'}</div>
+            <div>Pending review: ${file.pending ? 'Yes' : 'No'}</div>
+            <div class="actions"><button class="btn" data-open>Open file</button></div>
+          `;
+          preview.querySelector('[data-open]').addEventListener('click', () => {
+            vscode.postMessage({ type: 'openFile', path: file.filePath });
+          });
+        });
+        list.appendChild(item);
+      });
+    }
+
+    function updateTokenEstimate() {
+      const text = document.getElementById('chat-input').value.trim();
+      const words = text ? text.split(/\s+/).length : 0;
+      document.getElementById('token-count').textContent = `~${Math.round(words * 0.75)} tokens`;
+    }
+
+    function sendChat() {
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      if (!text) {
+        return;
+      }
+      appendMessage('user', text);
+      input.value = '';
+      input.style.height = '40px';
+      updateTokenEstimate();
+      document.getElementById('send-btn').disabled = true;
+      vscode.postMessage({
+        type: 'chat',
+        content: text,
+        mode: activeMode,
+        model: document.getElementById('model-select').value
+      });
+    }
+
+    function wireInput() {
+      const input = document.getElementById('chat-input');
+      input.addEventListener('input', () => {
+        input.style.height = 'auto';
+        input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+        updateTokenEstimate();
+        document.getElementById('send-btn').disabled = input.value.trim().length === 0;
+      });
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          sendChat();
+        }
+      });
+      document.getElementById('send-btn').addEventListener('click', sendChat);
+      document.getElementById('enhance-btn').addEventListener('click', () => {
+        const text = input.value.trim();
+        if (!text) {
+          return;
+        }
+        vscode.postMessage({ type: 'enhancePrompt', text });
+      });
+      document.getElementById('attach-btn').addEventListener('click', () => {
+        appendWorkflowNote('Use @file <path> in your prompt to attach repository files.');
+      });
+    }
+
+    function wireTabs() {
+      document.querySelectorAll('.tab').forEach((tab) => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.tab').forEach((node) => node.classList.remove('active'));
+          tab.classList.add('active');
+          activeMode = tab.getAttribute('data-mode');
+          vscode.postMessage({ type: 'modeChanged', mode: activeMode });
+        });
+      });
+    }
+
+    function wireHeader() {
+      const model = document.getElementById('model-select');
+      const preferred = model.getAttribute('data-preferred');
+      if (preferred) {
+        model.value = preferred;
+      }
+      document.getElementById('toggle-sidebar').addEventListener('click', () => {
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar.style.display === 'none') {
+          sidebar.style.display = 'flex';
+        } else {
+          sidebar.style.display = 'none';
+        }
+      });
+    }
+
+    window.addEventListener('message', (event) => {
+      const payload = event.data || {};
+      switch (payload.type) {
+        case 'setStatus':
+          setStatus(payload.phase, payload.detail);
+          break;
+        case 'streamStart':
+          activeAssistantStream = appendMessage('agent', '');
+          break;
+        case 'streamToken':
+          if (!activeAssistantStream) {
+            activeAssistantStream = appendMessage('agent', '');
+          }
+          const body = activeAssistantStream.querySelector('.msg-body');
+          body.innerHTML = markdownToHtml((body.dataset.raw || '') + String(payload.token || ''));
+          body.dataset.raw = (body.dataset.raw || '') + String(payload.token || '');
+          decorateCodeBlocks(activeAssistantStream);
+          break;
+        case 'streamEnd':
+          activeAssistantStream = null;
+          setStatus('done');
+          break;
+        case 'streamError':
+          appendWorkflowNote(payload.message || 'Stream failed');
+          setStatus('failed', payload.message || 'Failed');
+          break;
+        case 'enhancedPrompt': {
+          const input = document.getElementById('chat-input');
+          input.value = payload.text || '';
+          input.dispatchEvent(new Event('input'));
+          break;
+        }
+        case 'planCard':
+          appendPlanCard(payload);
+          break;
+        case 'readCard':
+          appendReadCard(payload);
+          break;
+        case 'diffCard':
+          appendDiffCard(payload);
+          break;
+        case 'diffApplied':
+          appendWorkflowNote(`✅ ${payload.filePath} updated — ${payload.removed} lines removed, ${payload.added} lines added`);
+          break;
+        case 'diffRejected':
+          appendWorkflowNote(`❌ Changes rejected for ${payload.filePath}`);
+          break;
+        case 'workflowProgress':
+          appendWorkflowNote(payload.label || `Step ${payload.current}/${payload.total}`);
+          break;
+        case 'workflowDone':
+          appendWorkflowNote(`✅ Done: ${payload.summary}`);
+          setStatus('done');
+          break;
+        case 'contextFiles':
+          updateFilesContext(payload.files || []);
+          break;
+        case 'contextStats':
+          updateContextIndicator(Number(payload.used || 0), Number(payload.max || 128000), Boolean(payload.warn));
+          break;
+        case 'terminalStart':
+          appendTerminalStart(payload);
+          break;
+        case 'terminalChunk':
+          appendTerminalChunk(payload);
+          break;
+        case 'terminalEnd':
+          finishTerminal(payload);
+          break;
+        case 'notice':
+          appendWorkflowNote(payload.text || 'Notice');
+          break;
+        case 'cleared':
+          document.getElementById('messages').innerHTML = '';
+          break;
+        default:
+          break;
       }
     });
+
+    function init() {
+      wireHeader();
+      wireTabs();
+      wireInput();
+      appendWorkflowNote('NIM Coder is ready. Agent mode now uses plan → confirm → execute → verify workflow.');
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
 </html>
